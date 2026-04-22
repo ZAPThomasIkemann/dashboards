@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang=de>
+<head>
+    <meta charset=UTF-8>
+    <meta name=viewport content=width=device-width, initial-scale=1.0>
+    <title>Dashboard Auswahl</title>
+    <style>
+        :root {
+            --bg: #08111c;
+            --bg2: #0e1b2b;
+            --surface: rgba(18, 31, 49, 0.86);
+            --border: rgba(255, 255, 255, 0.09);
+            --text: #e9f2fb;
+            --muted: #9fb4c9;
+            --green: #18e888;
+            --cyan: #00d7ff;
+            --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font-family: Poppins, system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(24, 232, 136, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(0, 215, 255, 0.12), transparent 30%),
+                linear-gradient(160deg, var(--bg), var(--bg2));
+            padding: 24px;
+        }
+        .wrap {
+            width: min(980px, 100%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 32px;
+            backdrop-filter: blur(14px);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 18px;
+        }
+        .card {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            min-height: 220px;
+            position: relative;
+            overflow: hidden;
+            transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+            background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(24, 232, 136, 0.35);
+            box-shadow: 0 18px 40px rgba(0,0,0,.28);
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: auto -40px -40px auto;
+            width: 140px;
+            height: 140px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.05);
+        }
+        .title {
+            margin: 0 0 10px;
+            font-size: 1.9rem;
+            font-weight: 700;
+        }
+        .desc {
+            color: var(--muted);
+            max-width: 28ch;
+            line-height: 1.55;
+        }
+        .link {
+            margin-top: 26px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .zap .title { color: var(--green); }
+        .dmc .title { color: var(--cyan); }
+        @media (max-width: 640px) {
+            .wrap { padding: 22px; }
+            .card { min-height: 180px; }
+        }
+    </style>
+</head>
+<body>
+    <main class=wrap>
+        <section class=grid>
+            <a class=card zap href=./zap/>
+                <div class=title>ZAP</div>
+                <div class=desc>Öffnet das ZAP Dashboard mit Rankings, Backlinks und den bekannten SEO-Ansichten.</div>
+                <div class=link>Zum ZAP Dashboard →</div>
+            </a>
+            <a class=card dmc href=./dmc/>
+                <div class=title>DMC</div>
+                <div class=desc>Öffnet das DMC Dashboard im separaten Bereich innerhalb der neuen dashboards-Struktur.</div>
+                <div class=link>Zum DMC Dashboard →</div>
+            </a>
+        </section>
+    </main>
+</body>
+</html>

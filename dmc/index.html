@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DMC Content Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="panel panel--form">
+      <div class="panel__head">
+        <div>
+          <p class="eyebrow">DMC</p>
+          <h1>Content erstellen</h1>
+        </div>
+        <div class="meta">
+          <span>Webhook</span>
+          <strong>dmc-content-dashboard</strong>
+        </div>
+      </div>
+
+      <form id="contentForm" class="form">
+        <label class="field">
+          <span>Titel</span>
+          <input
+            id="contentTitle"
+            name="title"
+            type="text"
+            placeholder="z. B. LinkedIn Post zur Prozessautomatisierung"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span>Beschreibung</span>
+          <textarea
+            id="contentPrompt"
+            name="prompt"
+            rows="8"
+            placeholder="Beschreibe Thema, Zielgruppe, Tonalitaet und gewuenschtes Format..."
+            required
+          ></textarea>
+        </label>
+
+        <div class="actions">
+          <button type="submit" class="btn btn--primary" id="submitButton">
+            Abschicken
+          </button>
+          <button type="button" class="btn btn--ghost" id="btnClearForm">
+            Leeren
+          </button>
+        </div>
+      </form>
+
+      <div class="status-box" id="requestStatus" aria-live="polite">
+        Noch kein Content abgeschickt.
+      </div>
+    </section>
+
+    <section class="panel panel--history">
+      <div class="panel__head panel__head--compact">
+        <div>
+          <p class="eyebrow">Uebersicht</p>
+          <h2>Bisher abgeschickte Contents</h2>
+        </div>
+      </div>
+
+      <div class="history-list" id="historyList"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
