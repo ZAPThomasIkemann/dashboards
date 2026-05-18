@@ -1,5 +1,5 @@
 <?php
-define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: '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');
+define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: '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');
 define('DB_HOST', 'localhost');
 define('DB_USER', 'zapdash');
 define('DB_PASS', 'Zap@Dashboard2026!');

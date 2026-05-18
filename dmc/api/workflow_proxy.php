@@ -1,7 +1,16 @@
 <?php
+// Lokal (localhost / 127.0.0.1): Workflows direkt auf diesem Server aufrufen,
+// damit fastcgi_finish_request() greift und dashboardApiUrl-Callbacks korrekt zurückkommen.
+// Auf dem Produktionsserver läuft alles auf thomas-dev.zap-srv.com.
+$host = $_SERVER['HTTP_HOST'] ?? '';
+$isLocal = ($host === 'localhost' || str_starts_with($host, 'localhost:') || $host === '127.0.0.1');
+$baseUrl = $isLocal
+    ? 'http://localhost/dashboards/dmc/api'
+    : 'https://thomas-dev.zap-srv.com/dashboards/dmc/api';
+
 $allowedActions = [
-    'content_generate' => 'https://thomas-dev.zap-srv.com/dashboards/dmc/api/workflow_content.php',
-    'content_revision' => 'https://thomas-dev.zap-srv.com/dashboards/dmc/api/workflow_revision.php',
+    'content_generate' => $baseUrl . '/workflow_content.php',
+    'content_revision'  => $baseUrl . '/workflow_revision.php',
 ];
 
 header('Content-Type: application/json');
