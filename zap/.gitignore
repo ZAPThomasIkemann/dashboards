@@ -1,3 +1,15 @@
-# Sensitive config — never commit real credentials
+# Credentials — never commit
 config.local.php
 *.env
+
+# Runtime cache
+storage/cache/
+storage/
+
+# Backup files
+*.bak_*
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
