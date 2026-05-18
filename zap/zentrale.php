@@ -42,7 +42,7 @@
                 <div class="queue-live-head">
                     <div class="queue-live-title">
                         <h2 class="rankings-summary-title"><i class="fas fa-toggle-on"></i> Pipeline Steuerung</h2>
-                        <span class="page-subtitle" style="margin:0;">Die Schalter stoppen oder starten jeweils nur neue Arbeit in der betreffenden Stufe. Bereits laufende n8n-Executions werden dadurch nicht hart beendet.</span>
+                        <span class="page-subtitle" style="margin:0;">Die Schalter stoppen oder starten neue Arbeit in der betreffenden Stufe. <strong>Pause</strong> setzt außerdem alle laufenden Domain-Jobs zurück in den Queue, damit keine Domains dauerhaft im Status „Processing" hängen bleiben. <strong>Resume</strong> startet sofort den nächsten Batch (je 5 Domains, sequenziell).</span>
                     </div>
                     <div class="queue-meta">
                         <div id="cbControlsRefreshText">Lade Steuerung...</div>
@@ -57,6 +57,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260512a"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518e"></script>
 </body>
 </html>

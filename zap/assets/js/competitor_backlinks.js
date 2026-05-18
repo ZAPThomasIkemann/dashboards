@@ -5,6 +5,13 @@ let competitorQueueRows = [];
 let competitorQueueView = 'all';
 const competitorPipelineApiBase = '/api';
 
+// Auto-advance: dispatch next batch automatically when the current batch finishes.
+// Guards against concurrent or too-frequent dispatches.
+let autoDispatchInFlight = false;
+let autoDispatchLastAt = 0;
+const AUTO_DISPATCH_COOLDOWN_MS = 20000; // minimum gap between auto-dispatches
+const DISPATCH_BATCH_SIZE = 5;           // domains per dispatch call
+
 document.addEventListener('DOMContentLoaded', () => {
   const hasCompetitorBacklinksPage = Boolean(document.getElementById('cbBody'));
   const hasControlPage = Boolean(document.getElementById('cbControlGrid'));
@@ -148,6 +155,15 @@ function renderCompetitorBacklinkQueue(payload) {
   renderQueueSummary(payload.summary || {});
   competitorQueueRows = Array.isArray(payload.rows) ? payload.rows : [];
   renderCompetitorBacklinkQueueRows(competitorQueueRows);
+
+  // Auto-advance: when not paused and nothing is processing but queued domains exist,
+  // automatically dispatch the next batch so processing continues without manual clicks.
+  const paused = String((payload.controls || {}).pause_backlinks || '0') === '1';
+  const processing = Number((payload.summary || {}).processing || 0);
+  const queued = Number((payload.summary || {}).queued || 0);
+  if (!paused && processing === 0 && queued > 0) {
+    maybeAutoDispatch();
+  }
 }
 
 function renderProcessingStep(value) {
@@ -350,7 +366,67 @@ async function updateControl(controlKey, controlValue) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ control_key: controlKey, control_value: controlValue }),
   });
+
+  if (controlKey === 'pause_backlinks') {
+    if (controlValue === '0') {
+      // Resume: immediately dispatch the first batch of DISPATCH_BATCH_SIZE domains.
+      // Reset the auto-dispatch cooldown so the first batch fires without delay.
+      autoDispatchLastAt = 0;
+      await silentDispatch();
+    } else if (controlValue === '1') {
+      // Pause: reset any domains that are stuck in 'processing' or 'dispatching'
+      // so they re-enter the queue and are not lost.
+      await resetProcessingDomains();
+    }
+  }
+
   await Promise.all([loadCompetitorControls(), loadCompetitorBacklinkQueue()]);
+}
+
+// Reset domains stuck in 'processing' / 'dispatching' back to queued state.
+async function resetProcessingDomains() {
+  try {
+    const res = await fetch('api/reset_domain_processing.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const d = await res.json();
+    if (d.success && d.reset_count > 0) {
+      showToast(d.message || `${d.reset_count} Domain(s) zurückgesetzt.`, 'success');
+    }
+  } catch (e) {
+    // Non-critical: don't block the pause action
+  }
+}
+
+// Dispatch the next DISPATCH_BATCH_SIZE domains silently (no button state change, no error toast).
+async function silentDispatch() {
+  autoDispatchInFlight = true;
+  autoDispatchLastAt = Date.now();
+  try {
+    const res = await fetch(zapTriggerApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'dispatch_queued_domains', batch: DISPATCH_BATCH_SIZE }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast(d.message || `${DISPATCH_BATCH_SIZE} Domains zur Verarbeitung gestartet.`, 'success');
+    }
+  } catch (e) {
+    // Silently ignore network errors during auto/silent dispatch
+  } finally {
+    autoDispatchInFlight = false;
+  }
+}
+
+// Throttled auto-dispatch: fires only when no dispatch is already in flight
+// and the cooldown period has elapsed.
+async function maybeAutoDispatch() {
+  const now = Date.now();
+  if (autoDispatchInFlight || (now - autoDispatchLastAt) < AUTO_DISPATCH_COOLDOWN_MS) return;
+  await silentDispatch();
+  setTimeout(loadCompetitorBacklinkQueue, 2000);
 }
 
 async function loadIgnoredDomains() {
@@ -697,14 +773,16 @@ document.addEventListener('DOMContentLoaded', () => {
 async function triggerDispatchDomains() {
   const btn = document.getElementById('cbDispatchDomainsBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Dispatching…'; }
+  // Reset auto-dispatch cooldown so the next auto-advance doesn't wait unnecessarily.
+  autoDispatchLastAt = Date.now();
   try {
     const res = await fetch(zapTriggerApi, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'dispatch_queued_domains', batch: 100 }),
+      body: JSON.stringify({ action: 'dispatch_queued_domains', batch: DISPATCH_BATCH_SIZE }),
     });
     const d = await res.json();
-    showToast(d.success ? (d.message || 'Dispatched') : (d.error || 'Failed'), d.success ? 'success' : 'error');
+    showToast(d.success ? (d.message || `${DISPATCH_BATCH_SIZE} Domains dispatched`) : (d.error || 'Failed'), d.success ? 'success' : 'error');
   } catch(e) {
     showToast('Request failed: ' + e.message, 'error');
   } finally {

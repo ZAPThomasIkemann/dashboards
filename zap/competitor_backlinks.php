@@ -122,7 +122,7 @@
                     <div class="queue-live-head">
                         <div class="queue-live-title">
                             <h2 class="rankings-summary-title"><i class="fas fa-at"></i> Domain Processing Queue</h2>
-                            <span class="page-subtitle" style="margin:0;">Shows which referring domain is currently being enriched for imprint, contact, and email details. One workflow run can receive multiple domains, but each domain is processed sequentially inside that run. The table refreshes automatically.</span>
+                            <span class="page-subtitle" style="margin:0;">Shows which referring domain is currently being enriched for imprint, contact, and email details. Each batch processes <strong>5 domains sequentially</strong>. When a batch finishes the next is dispatched automatically — until <em>Pause</em> is clicked. Clicking <em>Pause</em> also resets any domains stuck in processing back to the queue.</span>
                             <span class="page-subtitle" id="cbQueueSummaryText" style="margin:0;">Loading queue summary...</span>
                         </div>
                         <div class="queue-meta">
@@ -292,6 +292,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518d"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518e"></script>
 </body>
 </html>
