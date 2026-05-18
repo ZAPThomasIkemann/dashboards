@@ -288,13 +288,14 @@ function zap2_process_keyword(PDO $pdo, DataForSEO $dfs, array $kw, bool $verbos
     }
     $result['new_rank'] = $zapPosition;
 
-    // ── Step 3: Update ZAP's position in rankings table ─────────────────────
+    // ── Step 3: Update ZAP's position + stamp serp_checked_at ──────────────
     $pdo->prepare("
         UPDATE rankings
         SET position          = ?,
             previous_position = position,
             url               = COALESCE(?, url),
-            last_checked      = NOW()
+            last_checked      = NOW(),
+            serp_checked_at   = NOW()
         WHERE domain = ? AND keyword = ? AND location_code = ?
     ")->execute([$zapPosition, $zapUrl, $domain, $keyword, $locCode]);
 
@@ -393,7 +394,7 @@ function zap2_process_keyword(PDO $pdo, DataForSEO $dfs, array $kw, bool $verbos
 
 $body       = json_decode((string) file_get_contents('php://input'), true) ?: [];
 $mode       = (string) ($body['mode']  ?? ($_GET['mode']  ?? 'run_batch'));
-$batchSize  = max(1, min(50, (int) ($body['batch'] ?? ($_GET['batch'] ?? 5))));
+$batchSize  = max(1, min(50, (int) ($body['batch'] ?? ($_GET['batch'] ?? 1))));  // default: 1 domain per run
 $singleKw   = trim((string) ($body['keyword'] ?? ($_GET['keyword'] ?? '')));
 $minPos     = max(1, (int) ($body['min_position'] ?? ($_GET['min_position'] ?? 11)));
 
@@ -411,6 +412,13 @@ if ($paused && $mode !== 'status') {
 
 // Ensure schema
 zap2_ensure_schema($pdo);
+
+// Add serp_checked_at column if it doesn't exist yet (tracks when a keyword was
+// last run through the SERP worker so we can process unchecked ones first)
+try {
+    $pdo->exec("ALTER TABLE rankings ADD COLUMN serp_checked_at DATETIME NULL DEFAULT NULL");
+    $pdo->exec("ALTER TABLE rankings ADD KEY idx_serp_checked (serp_checked_at)");
+} catch (Throwable $e) { /* column already exists */ }
 
 // ── mode=status: return queue stats only ─────────────────────────────────────
 if ($mode === 'status') {
@@ -441,11 +449,20 @@ if ($mode === 'run_one' && $singleKw !== '') {
     exit;
 }
 
-// ── mode=run_batch: process N keywords with position > minPos ─────────────────
+// ── mode=run_batch: process N keywords, never-checked first ───────────────────
+//
+// Priority order:
+//  1. Keywords that have NEVER been checked (serp_checked_at IS NULL) — oldest created first
+//  2. Keywords checked longest ago (serp_checked_at ASC)
+// Within each group, higher search_volume comes first so important keywords
+// get processed before low-traffic ones.
 $kwStmt = $pdo->prepare("
     SELECT * FROM rankings
     WHERE COALESCE(position, 999) >= ?
-    ORDER BY COALESCE(search_volume, 0) DESC, COALESCE(position, 999) ASC
+    ORDER BY
+        (serp_checked_at IS NULL) DESC,        -- NULL (never checked) comes first
+        serp_checked_at ASC,                   -- then oldest checked
+        COALESCE(search_volume, 0) DESC        -- tie-break: highest volume first
     LIMIT ?
 ");
 $kwStmt->execute([$minPos, $batchSize]);
