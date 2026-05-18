@@ -3,79 +3,398 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DMC Content Dashboard</title>
+  <title>DMC Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Rubik:wght@400;500;600;700&display=swap"
     rel="stylesheet"
   />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <script>
+    (() => {
+      try {
+        const candidates = ["dmc_content_dashboard_v7", "dmc_content_dashboard_v6"];
+        let data = null;
+        for (const key of candidates) {
+          const raw = localStorage.getItem(key);
+          if (!raw) continue;
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              data = parsed;
+              break;
+            }
+          } catch (innerError) {
+            console.error(innerError);
+          }
+        }
+        if (!data) return;
+        const theme = data?.theme;
+        if (theme === "dark" || theme === "light") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=20260515d" />
 </head>
 <body>
-  <main class="shell">
-    <section class="panel panel--form">
-      <div class="panel__head">
-        <div>
-          <p class="eyebrow">DMC</p>
-          <h1>Content erstellen</h1>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <a class="sidebar-logo" href="#">
+        <img
+          class="logo-mark-img"
+          src="https://europamaut.com/assets/img/logos/europamaut.png"
+          alt="DMC / Europamaut Logo"
+        />
+        <div class="sidebar-logo-text">
+          <span class="logo-main">Europamaut</span>
+          <span class="logo-sub">DMC Dashboard</span>
         </div>
-        <div class="meta">
-          <span>Webhook</span>
-          <strong>dmc-content-dashboard</strong>
+      </a>
+      <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Navigation umschalten">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Content</div>
+      <button type="button" class="nav-item active" data-view-trigger="content">
+        <i class="fas fa-pen-to-square"></i>
+        <span>Content erstellen</span>
+      </button>
+      <button type="button" class="nav-item nav-item--sub" data-view-trigger="content-threads">
+        <i class="fas fa-comments"></i>
+        <span>Threads</span>
+      </button>
+      <button type="button" class="nav-item nav-item--sub" data-view-trigger="content-systemprompt">
+        <i class="fas fa-sliders"></i>
+        <span>Systemprompt</span>
+      </button>
+
+      <div class="nav-section-label">SEO</div>
+      <button type="button" class="nav-item" data-view-trigger="seo-backlinks">
+        <i class="fas fa-link"></i>
+        <span>Backlinks</span>
+      </button>
+      <button type="button" class="nav-item" data-view-trigger="seo-rankings">
+        <i class="fas fa-chart-line"></i>
+        <span>Rankings</span>
+      </button>
+
+      <div class="nav-section-label">Links</div>
+      <a class="nav-item" href="/dashboards/">
+        <i class="fas fa-table-cells-large"></i>
+        <span>Dashboard Auswahl</span>
+      </a>
+      <a class="nav-item" href="/dashboards/zap/">
+        <i class="fas fa-bolt"></i>
+        <span>ZAP Dashboard</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-info">
+        <div class="server-dot online"></div>
+        <span>DMC online</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main-content">
+    <header class="topbar">
+      <button class="mobile-menu-btn" id="mobileMenuBtn" type="button" aria-label="Navigation oeffnen">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="topbar-left">
+        <div class="breadcrumb" id="breadcrumbLabel">Content</div>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Farbschema wechseln">
+          <i class="fas fa-moon" id="themeToggleIcon"></i>
+          <span id="themeToggleLabel">Dark Mode</span>
+        </button>
+        <div class="topbar-time" id="topbarTime"></div>
+        <div class="topbar-user">
+          <div class="user-avatar">DMC</div>
+          <span>Marketing Ops</span>
         </div>
       </div>
+    </header>
 
-      <form id="contentForm" class="form">
-        <label class="field">
-          <span>Titel</span>
-          <input
-            id="contentTitle"
-            name="title"
-            type="text"
-            placeholder="z. B. LinkedIn Post zur Prozessautomatisierung"
-            required
-          />
-        </label>
+    <main class="page-content">
+      <section class="page-header">
+        <h1 id="pageTitle"><i class="fas fa-pen-to-square"></i> DMC Dashboard</h1>
+        <span class="page-subtitle" id="pageSubtitle">
+          Content und SEO sind klar getrennt und werden nur im aktiven Bereich angezeigt.
+        </span>
+      </section>
 
-        <label class="field">
-          <span>Beschreibung</span>
-          <textarea
-            id="contentPrompt"
-            name="prompt"
-            rows="8"
-            placeholder="Beschreibe Thema, Zielgruppe, Tonalitaet und gewuenschtes Format..."
-            required
-          ></textarea>
-        </label>
+      <section class="view-section" data-view="content">
+        <div class="dashboard-grid dashboard-grid--full">
+          <section class="card card--form">
+            <div class="card-header">
+              <h3><i class="fas fa-pen-to-square"></i> Content erstellen</h3>
+              <div class="card-actions">
+                <button type="button" class="btn btn-secondary" id="btnClearForm">
+                  <i class="fas fa-eraser"></i> Leeren
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="contentForm" class="form-grid">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label" for="contentAssignee">Bearbeiter</label>
+                    <select id="contentAssignee" name="assignee" class="form-input">
+                      <option value="">Nicht ausgewählt</option>
+                      <option value="Michelle">Michelle</option>
+                      <option value="Milena">Milena</option>
+                      <option value="Ann-Christin">Ann-Christin</option>
+                      <option value="Frank">Frank</option>
+                      <option value="Thomas">Thomas</option>
+                    </select>
+                  </div>
 
-        <div class="actions">
-          <button type="submit" class="btn btn--primary" id="submitButton">
-            Abschicken
-          </button>
-          <button type="button" class="btn btn--ghost" id="btnClearForm">
-            Leeren
-          </button>
+                  <div class="form-group">
+                    <label class="form-label" for="contentCountry">Land</label>
+                    <select id="contentCountry" name="country" class="form-input">
+                      <option value="">Nicht ausgewählt</option>
+                      <option value="Österreich">Österreich</option>
+                      <option value="Tschechien">Tschechien</option>
+                      <option value="Schweiz">Schweiz</option>
+                      <option value="Slowenien">Slowenien</option>
+                      <option value="Rumänien">Rumänien</option>
+                      <option value="Ungarn">Ungarn</option>
+                      <option value="Kroatien">Kroatien</option>
+                      <option value="Bulgarien">Bulgarien</option>
+                      <option value="Slowakei">Slowakei</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="contentType">Inhaltstyp</label>
+                    <select id="contentType" name="contentType" class="form-input">
+                      <option value="">– Kein Typ –</option>
+                      <option value="ratgeber">Ratgeber</option>
+                      <option value="news">News</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="contentTitle">Titel</label>
+                  <input
+                    id="contentTitle"
+                    name="title"
+                    class="form-input"
+                    type="text"
+                    placeholder="z. B. Digitale Vignette fuer Europa einfach online kaufen"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="contentPrompt">Beschreibung</label>
+                  <textarea
+                    id="contentPrompt"
+                    name="prompt"
+                    class="form-input form-input--textarea"
+                    rows="10"
+                    placeholder="Beschreibe Thema, Zielgruppe, Tonalitaet und gewuenschtes Format..."
+                    required
+                  ></textarea>
+                </div>
+
+                <div class="content-metrics" id="contentMetrics">
+                  <div class="metric-card">
+                    <span class="metric-card__label">Ø Erstellungszeit</span>
+                    <strong class="metric-card__value" id="avgDurationValue">-</strong>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-card__label">Aktive Workflows</span>
+                    <strong class="metric-card__value" id="activeThreadsValue">0</strong>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-card__label">Abgeschlossen</span>
+                    <strong class="metric-card__value" id="completedThreadsValue">0</strong>
+                  </div>
+                </div>
+
+                <label class="form-checkbox-row" for="askQuestionsMode">
+                  <input type="checkbox" id="askQuestionsMode" name="askQuestionsMode" />
+                  <span class="form-checkbox-row__label">
+                    <i class="fas fa-circle-question"></i> KI stellt Rückfragen vor der Generierung
+                  </span>
+                  <span class="form-checkbox-row__hint">Empfohlen bei komplexen Themen</span>
+                </label>
+
+                <div class="form-toolbar">
+                  <button type="submit" class="btn btn-primary" id="submitButton">
+                    <i class="fas fa-paper-plane"></i> Abschicken
+                  </button>
+                </div>
+              </form>
+
+              <div class="status-box status-box--notice" id="requestStatus" aria-live="polite">
+                Noch kein Content abgeschickt.
+              </div>
+
+              <div id="questionCard" class="question-card hidden" role="region" aria-label="KI-Rückfragen"></div>
+            </div>
+          </section>
         </div>
-      </form>
+      </section>
 
-      <div class="status-box" id="requestStatus" aria-live="polite">
-        Noch kein Content abgeschickt.
-      </div>
-    </section>
+      <section class="view-section hidden" data-view="content-threads">
+        <div class="dashboard-grid dashboard-grid--full">
+          <section class="card card--history">
+            <div class="card-header">
+              <h3><i class="fas fa-comments"></i> Content Threads</h3>
+              <span class="count-badge" id="historyCount">0</span>
+            </div>
+            <div class="card-body">
+              <div class="thread-filters" id="threadFilters">
+                <div class="thread-filters__row">
+                  <div class="form-group">
+                    <label class="form-label" for="threadFilterAssignee">Bearbeiter</label>
+                    <select id="threadFilterAssignee" class="form-input">
+                      <option value="">Alle Bearbeiter</option>
+                    </select>
+                  </div>
 
-    <section class="panel panel--history">
-      <div class="panel__head panel__head--compact">
-        <div>
-          <p class="eyebrow">Uebersicht</p>
-          <h2>Bisher abgeschickte Contents</h2>
+                  <div class="form-group">
+                    <label class="form-label" for="threadFilterCountry">Land</label>
+                    <select id="threadFilterCountry" class="form-input">
+                      <option value="">Alle Laender</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="thread-filters__row thread-filters__row--date">
+                  <div class="form-group">
+                    <label class="form-label" for="threadFilterDateFrom">Datum von</label>
+                    <input id="threadFilterDateFrom" class="form-input" type="date" />
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="threadFilterDateTo">Datum bis</label>
+                    <input id="threadFilterDateTo" class="form-input" type="date" />
+                  </div>
+
+                  <div class="thread-filters__actions">
+                    <button type="button" class="btn btn-secondary btn--small" id="btnResetThreadFilters">
+                      <i class="fas fa-rotate-left"></i> Filter zuruecksetzen
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="history-list" id="historyList"></div>
+            </div>
+          </section>
         </div>
-      </div>
+      </section>
 
-      <div class="history-list" id="historyList"></div>
-    </section>
-  </main>
+      <section class="view-section hidden" data-view="content-systemprompt">
+        <div class="dashboard-grid dashboard-grid--wide">
+          <section class="card card--form">
+            <div class="card-header">
+              <h3><i class="fas fa-sliders"></i> Systemprompt pflegen</h3>
+              <div class="card-actions">
+                <button type="button" class="btn btn-primary" id="btnSaveSystemPrompt">
+                  <i class="fas fa-floppy-disk"></i> Speichern
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-row">
+                  <div class="form-group">
+                    <select id="systemPromptCountry" class="form-input"></select>
+                  </div>
+                </div>
 
-  <script src="app.js"></script>
+                <div class="form-group">
+                  <textarea
+                    id="contentSystemPrompt"
+                    name="systemPrompt"
+                    class="form-input form-input--textarea systemprompt-editor"
+                    rows="16"
+                    placeholder="Laenderspezifischen Systemprompt eingeben..."
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card card--history">
+            <div class="card-header">
+              <h3><i class="fas fa-clock-rotate-left"></i> Versionen</h3>
+              <span class="count-badge" id="systemPromptVersionCount">0</span>
+            </div>
+            <div class="card-body">
+              <div class="history-list history-list--versions" id="systemPromptVersions"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-section hidden" data-view="seo-backlinks">
+        <section class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-link"></i> DMC Backlinks</h3>
+            <div class="card-actions">
+              <button type="button" class="btn btn-secondary btn--small" id="btnShowAllBacklinks">
+                <i class="fas fa-layer-group"></i> Alle
+              </button>
+              <button type="button" class="btn btn-secondary btn--small" id="btnFocusEuropamaut">
+                <i class="fas fa-star"></i> Europamaut
+              </button>
+            </div>
+          </div>
+          <div class="card-body card-body--compact">
+            <div class="detail-banner" id="backlinksDetailBanner">
+              Detailansicht fuer alle DMC- und Europamaut-Zieldomains.
+            </div>
+            <div class="embed-frame-wrap embed-frame-wrap--backlinks">
+              <iframe
+                id="backlinksFrame"
+                class="embed-frame"
+                src="/dashboards/zap/backlinks.php?embed=1&scope_brand=DMC&v=20260424b"
+                title="DMC Backlinks"
+                loading="lazy"
+              ></iframe>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-section hidden" data-view="seo-rankings">
+        <section class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-chart-line"></i> DMC Rankings</h3>
+          </div>
+          <div class="card-body">
+            <div class="embed-frame-wrap">
+              <iframe
+                id="rankingsFrame"
+                class="embed-frame"
+                src="/dashboards/zap/rankings.php?embed=1&scope_brand=DMC&v=20260424b"
+                title="DMC Rankings"
+                loading="lazy"
+              ></iframe>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+    <script src="app.js?v=20260515d"></script>
 </body>
 </html>
