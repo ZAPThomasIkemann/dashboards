@@ -18,7 +18,7 @@ if (!$loadedConfig) {
     header('Content-Type: application/json');
     echo json_encode([
         'success' => false,
-        'error' => 'ZAP-Konfiguration konnte nicht geladen werden',
+        'error' => 'Konfiguration konnte nicht geladen werden',
     ]);
     exit;
 }

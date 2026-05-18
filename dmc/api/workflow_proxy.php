@@ -1,7 +1,5 @@
 <?php
 $allowedActions = [
-    // n8n Cloud (Backup): 'content_generate' => 'https://zap-hosting.app.n8n.cloud/webhook/dmc-content-dashboard',
-    // n8n Cloud (Backup): 'content_revision' => 'https://zap-hosting.app.n8n.cloud/webhook/dmc-content-revision',
     'content_generate' => 'https://thomas-dev.zap-srv.com/dashboards/dmc/api/workflow_content.php',
     'content_revision' => 'https://thomas-dev.zap-srv.com/dashboards/dmc/api/workflow_revision.php',
 ];
