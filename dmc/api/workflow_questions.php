@@ -7,6 +7,7 @@ set_time_limit(30);
 ignore_user_abort(false);
 
 foreach ([
+    __DIR__ . '/../../zap/config.php',
     __DIR__ . '/../../../config.php',
     __DIR__ . '/../../../../config.php',
     dirname(__DIR__, 3) . '/config.php',
