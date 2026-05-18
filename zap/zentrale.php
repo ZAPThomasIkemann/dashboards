@@ -35,14 +35,14 @@
         <div class="page-content">
             <div class="page-header">
                 <h1><i class="fas fa-sliders"></i> 0. Zentrale</h1>
-                <span class="page-subtitle">Hier steuerst du zentral, ob neue Keywords aufgenommen, Wettbewerber-Backlinks geclaimt, E-Mail-Adressen gesucht oder Outreach-Schritte fortgesetzt werden.</span>
+                <span class="page-subtitle">Zentrale Pipeline-Steuerung. Alle Worker (ZAP 2–4) laufen als autonome Python-Daemons — kein n8n, kein manuelles Dispatching. Die Schalter setzen DB-Flags, die der jeweilige Worker beim nächsten Zyklus prüft.</span>
             </div>
 
             <div class="card">
                 <div class="queue-live-head">
                     <div class="queue-live-title">
                         <h2 class="rankings-summary-title"><i class="fas fa-toggle-on"></i> Pipeline Steuerung</h2>
-                        <span class="page-subtitle" style="margin:0;">Die Schalter stoppen oder starten neue Arbeit in der betreffenden Stufe. <strong>Pause</strong> setzt außerdem alle laufenden Domain-Jobs zurück in den Queue, damit keine Domains dauerhaft im Status „Processing" hängen bleiben. <strong>Resume</strong> startet sofort den nächsten Batch (je 5 Domains, sequenziell).</span>
+                        <span class="page-subtitle" style="margin:0;"><strong>Pause</strong> setzt den Flag — der Worker beendet den aktuellen Batch und startet keinen neuen. <strong>Resume</strong> hebt den Flag auf — der Worker startet beim nächsten Polling-Zyklus automatisch. ZAP 4 (E-Mail) läuft alle ~4 Minuten, ZAP 3 (Backlinks) pollt kontinuierlich.</span>
                     </div>
                     <div class="queue-meta">
                         <div id="cbControlsRefreshText">Lade Steuerung...</div>
@@ -57,6 +57,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518f"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518g"></script>
 </body>
 </html>

@@ -83,7 +83,7 @@
         <div class="page-content">
             <div class="page-header">
                 <h1><i class="fas fa-link"></i> 3. Competitor Backlinks</h1>
-                <span class="page-subtitle">Backlink inventory for outreach. The table below lists discovered backlink URLs, while the live processing queue above works domain by domain for email enrichment.</span>
+                <span class="page-subtitle">Vollautomatische Pipeline (ZAP 2–4): SERP → Backlinks → E-Mail-Enrichment. Alle Worker laufen als Python-Daemons — kein manuelles Dispatching nötig. Die Tabellen aktualisieren sich automatisch alle 5 Sekunden.</span>
             </div>
 
             <div class="step-grid">
@@ -100,26 +100,23 @@
                     </div>
                     <div class="pipeline-status-bar" id="cbPipelineStatusBar">
                         <span class="ps-icon" id="cbStatusIcon"><i class="fas fa-circle-notch fa-spin"></i></span>
-                        <span class="ps-text" id="cbStatusText">Checking worker status...</span>
+                        <span class="ps-text" id="cbStatusText">Lade Pipeline-Status…</span>
                         <div class="ps-actions">
-                            <button class="pipeline-trigger-btn" id="cbTriggerSerpBtn" onclick="triggerSerpCheck()">
+                            <button class="pipeline-trigger-btn" id="cbTriggerSerpBtn" onclick="triggerSerpCheck()" title="Startet den SERP-Check sofort (ZAP 2) — füllt die Backlink-Queue für ZAP 3">
                                 <i class="fas fa-sync-alt"></i> SERP Check Now
                             </button>
-                            <button class="pipeline-trigger-btn" id="cbDispatchDomainsBtn" onclick="triggerDispatchDomains()" title="Dispatches queued domains from the Domain Queue to the email enrichment worker">
-                                <i class="fas fa-paper-plane"></i> Dispatch Domains
-                            </button>
-                            <button class="pipeline-trigger-btn is-danger" id="cbFixStuckBtn" onclick="triggerFixStuckDomains()" title="Resets domains stuck in 'batch_claimed' status back to queued so they can be re-enriched" style="display:none;">
+                            <button class="pipeline-trigger-btn is-danger" id="cbFixStuckBtn" onclick="triggerFixStuckDomains()" title="Setzt Domains mit veraltetem 'batch_claimed'-Status zurück in die Queue — der Python-Poller verarbeitet sie beim nächsten Zyklus" style="display:none;">
                                 <i class="fas fa-wrench"></i> Fix Stuck Domains (<span id="cbStuckCount">0</span>)
                             </button>
-                            <button class="pipeline-trigger-btn is-danger" id="cbResetQueueBtn" onclick="triggerResetQueue()">
-                                <i class="fas fa-redo"></i> Reset Queue
+                            <button class="pipeline-trigger-btn is-danger" id="cbResetQueueBtn" onclick="triggerResetQueue()" title="Setzt die komplette ZAP-3-Backlink-Queue zurück auf pending — nur bei komplettem Neustart verwenden">
+                                <i class="fas fa-redo"></i> Reset Backlink-Queue
                             </button>
                         </div>
                     </div>
                     <div id="cbStuckWarning" style="display:none; margin-top:10px; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,183,77,.4); background:rgba(255,183,77,.08); color:#ffe2a8; font-size:.84rem; line-height:1.6;">
                         <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
                         <strong>Feststeckende Domains erkannt:</strong> <span id="cbStuckDetails"></span>
-                        Diese Domains haben seit über einer Stunde den Status <code>processing / batch_claimed</code> und werden von keinem Worker mehr verarbeitet.
+                        Diese Domains haben seit über einer Stunde den Status <code>processing / batch_claimed</code> — ein alter n8n-Workflow-Überbleibsel. Der Python-Poller verarbeitet sie nicht.
                         Klicke auf <strong>Fix Stuck Domains</strong>, um sie zurück in den Queue zu setzen.
                     </div>
                     <div class="control-grid" id="cbControlGrid">
@@ -131,7 +128,7 @@
                     <div class="queue-live-head">
                         <div class="queue-live-title">
                             <h2 class="rankings-summary-title"><i class="fas fa-at"></i> Domain Processing Queue</h2>
-                            <span class="page-subtitle" style="margin:0;">Shows which referring domain is currently being enriched for imprint, contact, and email details. Each batch processes <strong>5 domains sequentially</strong>. When a batch finishes the next is dispatched automatically — until <em>Pause</em> is clicked. Clicking <em>Pause</em> also resets any domains stuck in processing back to the queue.</span>
+                            <span class="page-subtitle" style="margin:0;">Der Python E-Mail-Poller verarbeitet queued Domains automatisch (alle ~4 Minuten, ~20 parallel). Status wechselt von <em>queued → enriching → found/no_email/no_imprint</em>. Pause stoppt den nächsten Batch. Die Tabelle aktualisiert sich alle 5 Sekunden.</span>
                             <span class="page-subtitle" id="cbQueueSummaryText" style="margin:0;">Loading queue summary...</span>
                         </div>
                         <div class="queue-meta">
@@ -301,6 +298,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518f"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518g"></script>
 </body>
 </html>
