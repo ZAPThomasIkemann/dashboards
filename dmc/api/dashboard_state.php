@@ -1,28 +1,5 @@
 <?php
-$configCandidates = [
-    __DIR__ . '/../../zap/config.php',
-    __DIR__ . '/../../dashboards/zap/config.php',
-    __DIR__ . '/../../config.php',
-];
-
-$loadedConfig = false;
-foreach ($configCandidates as $configPath) {
-    if (is_file($configPath)) {
-        require_once $configPath;
-        $loadedConfig = true;
-        break;
-    }
-}
-
-if (!$loadedConfig) {
-    http_response_code(500);
-    header('Content-Type: application/json');
-    echo json_encode([
-        'success' => false,
-        'error' => 'Konfiguration konnte nicht geladen werden',
-    ]);
-    exit;
-}
+require_once __DIR__ . '/../config.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');

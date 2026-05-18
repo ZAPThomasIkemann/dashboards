@@ -1617,7 +1617,7 @@
     if (state.backlinks.loaded) return;
 
     try {
-      const response = await fetch("/dashboards/zap/api/backlinks.php?scope_brand=DMC");
+      const response = await fetch("/dashboards/dmc/api/backlinks.php");
       const data = await response.json();
       state.backlinks.rows = Array.isArray(data?.data) ? data.data : [];
       state.backlinks.loaded = true;
@@ -1638,39 +1638,16 @@
   function applyBacklinksFrameFilters() {
     const frame = els.backlinksFrame;
     if (!frame) return;
-    try {
-      const doc = frame.contentDocument || frame.contentWindow?.document;
-      if (!doc) return;
-      const brandFilter = doc.getElementById("brandFilter");
-      if (brandFilter) brandFilter.value = "DMC";
-      const domainFilter = doc.getElementById("domainFilter");
-      if (domainFilter) domainFilter.value = state.backlinks.selectedDomain || "";
-      if (typeof frame.contentWindow.filterTable === "function") {
-        frame.contentWindow.filterTable();
-      }
-    } catch (error) {
-      console.error(error);
+    const base = "/dashboards/dmc/backlinks.php";
+    const domain = state.backlinks.selectedDomain || "";
+    const target = domain ? `${base}?domain=${encodeURIComponent(domain)}` : base;
+    if (frame.src !== target && !frame.src.endsWith(target.replace(/^\//, ""))) {
+      frame.src = target;
     }
   }
 
   function applyRankingsFrameFilters() {
-    const frame = els.rankingsFrame;
-    if (!frame) return;
-    try {
-      const doc = frame.contentDocument || frame.contentWindow?.document;
-      if (!doc) return;
-      const brandFilter = doc.getElementById("brandFilterR");
-      if (brandFilter) brandFilter.value = "DMC";
-      const domainFilter = doc.getElementById("domainFilter");
-      if (domainFilter && !DMC_DOMAINS.includes(domainFilter.value)) {
-        domainFilter.value = "";
-      }
-      if (typeof frame.contentWindow.filterRankings === "function") {
-        frame.contentWindow.filterRankings();
-      }
-    } catch (error) {
-      console.error(error);
-    }
+    // DMC rankings page is already pre-filtered to DMC domains – no cross-frame manipulation needed.
   }
 
   function setActiveView(view) {
