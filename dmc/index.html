@@ -75,21 +75,6 @@
         <span>Systemprompt</span>
       </button>
 
-      <div class="nav-section-label">SEO</div>
-      <button type="button" class="nav-item" data-view-trigger="seo-backlinks">
-        <i class="fas fa-link"></i>
-        <span>Backlinks</span>
-      </button>
-      <button type="button" class="nav-item" data-view-trigger="seo-rankings">
-        <i class="fas fa-chart-line"></i>
-        <span>Rankings</span>
-      </button>
-
-      <div class="nav-section-label">Links</div>
-      <a class="nav-item" href="/dashboards/">
-        <i class="fas fa-table-cells-large"></i>
-        <span>Dashboard Auswahl</span>
-      </a>
     </nav>
 
     <div class="sidebar-footer">
@@ -127,7 +112,7 @@
       <section class="page-header">
         <h1 id="pageTitle"><i class="fas fa-pen-to-square"></i> DMC Dashboard</h1>
         <span class="page-subtitle" id="pageSubtitle">
-          Content und SEO sind klar getrennt und werden nur im aktiven Bereich angezeigt.
+          Content erstellen, Threads verwalten und Systemprompts pflegen.
         </span>
       </section>
 
@@ -340,54 +325,6 @@
         </div>
       </section>
 
-      <section class="view-section hidden" data-view="seo-backlinks">
-        <section class="card">
-          <div class="card-header">
-            <h3><i class="fas fa-link"></i> DMC Backlinks</h3>
-            <div class="card-actions">
-              <button type="button" class="btn btn-secondary btn--small" id="btnShowAllBacklinks">
-                <i class="fas fa-layer-group"></i> Alle
-              </button>
-              <button type="button" class="btn btn-secondary btn--small" id="btnFocusEuropamaut">
-                <i class="fas fa-star"></i> Europamaut
-              </button>
-            </div>
-          </div>
-          <div class="card-body card-body--compact">
-            <div class="detail-banner" id="backlinksDetailBanner">
-              Detailansicht fuer alle DMC- und Europamaut-Zieldomains.
-            </div>
-            <div class="embed-frame-wrap embed-frame-wrap--backlinks">
-              <iframe
-                id="backlinksFrame"
-                class="embed-frame"
-                src="/dashboards/dmc/backlinks.php"
-                title="DMC Backlinks"
-                loading="lazy"
-              ></iframe>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <section class="view-section hidden" data-view="seo-rankings">
-        <section class="card">
-          <div class="card-header">
-            <h3><i class="fas fa-chart-line"></i> DMC Rankings</h3>
-          </div>
-          <div class="card-body">
-            <div class="embed-frame-wrap">
-              <iframe
-                id="rankingsFrame"
-                class="embed-frame"
-                src="/dashboards/dmc/rankings.php"
-                title="DMC Rankings"
-                loading="lazy"
-              ></iframe>
-            </div>
-          </div>
-        </section>
-      </section>
     </main>
   </div>
 

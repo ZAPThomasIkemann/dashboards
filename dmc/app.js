@@ -27,19 +27,6 @@
       [country.display, country.key],
     ])
   );
-  const DMC_DOMAINS = [
-    "digitale-vignette-online.at",
-    "digitale-vignette-online.cz",
-    "digitale-vignette-schweiz.de",
-    "digitale-vignette-slowenien.de",
-    "digitale-vignette-ro.online",
-    "digitale-vignette-ungarn.de",
-    "digitale-vignette-slowakei.de",
-    "digitale-vignette-kroatien.de",
-    "digitale-vignette-bulgarien.de",
-    "europamaut.com",
-  ];
-
   const els = {
     form: document.getElementById("contentForm"),
     systemPrompt: document.getElementById("contentSystemPrompt"),
@@ -78,13 +65,8 @@
     sidebarOverlay: document.getElementById("sidebarOverlay"),
     sidebarToggle: document.getElementById("sidebarToggle"),
     mobileMenuBtn: document.getElementById("mobileMenuBtn"),
-    backlinksFrame: document.getElementById("backlinksFrame"),
-    rankingsFrame: document.getElementById("rankingsFrame"),
-    backlinksDetailBanner: document.getElementById("backlinksDetailBanner"),
     askQuestionsCheckbox: document.getElementById("askQuestionsMode"),
     questionCard: document.getElementById("questionCard"),
-    btnShowAllBacklinks: document.getElementById("btnShowAllBacklinks"),
-    btnFocusEuropamaut: document.getElementById("btnFocusEuropamaut"),
     viewTriggers: Array.from(document.querySelectorAll("[data-view-trigger]")),
     views: Array.from(document.querySelectorAll("[data-view]")),
   };
@@ -130,11 +112,6 @@
       activeThreads: 0,
       completedThreads: 0,
       avgDurationSeconds: null,
-    },
-    backlinks: {
-      loaded: false,
-      rows: [],
-      selectedDomain: "",
     },
     questionMode: null,
   };
@@ -237,7 +214,7 @@
           : COUNTRY_OPTIONS[0].key;
 
       state = {
-        activeView: ["content", "content-threads", "content-systemprompt", "seo-backlinks", "seo-rankings"].includes(data?.activeView)
+        activeView: ["content", "content-threads", "content-systemprompt"].includes(data?.activeView)
           ? data.activeView
           : "content",
         theme: data?.theme === "dark" ? "dark" : "light",
@@ -267,6 +244,7 @@
         expandedThreadIds: Array.isArray(data?.expandedThreadIds)
           ? data.expandedThreadIds.map((value) => String(value))
           : [],
+
         threadStats: {
           totalThreads: 0,
           activeThreads: 0,
@@ -278,11 +256,6 @@
           country: typeof data?.threadFilters?.country === "string" ? data.threadFilters.country : "",
           dateFrom: typeof data?.threadFilters?.dateFrom === "string" ? data.threadFilters.dateFrom : "",
           dateTo: typeof data?.threadFilters?.dateTo === "string" ? data.threadFilters.dateTo : "",
-        },
-        backlinks: {
-          loaded: false,
-          rows: [],
-          selectedDomain: typeof data?.backlinks?.selectedDomain === "string" ? data.backlinks.selectedDomain : "",
         },
       };
 
@@ -325,9 +298,6 @@
         systemPromptCountry: state.systemPromptCountry,
         expandedThreadIds: state.expandedThreadIds,
         threadFilters: state.threadFilters,
-        backlinks: {
-          selectedDomain: state.backlinks.selectedDomain,
-        },
       })
     );
   }
@@ -1572,16 +1542,6 @@
         subtitle: "Hier pflegst du länderspezifische Systemprompts mit Versionierung und Wiederherstellung.",
         breadcrumb: "Content / Systemprompt",
       },
-      "seo-backlinks": {
-        title: "<i class='fas fa-link'></i> DMC Backlinks",
-        subtitle: "Backlink-Daten für die DMC-Domains inklusive Europamaut.",
-        breadcrumb: "SEO / Backlinks",
-      },
-      "seo-rankings": {
-        title: "<i class='fas fa-chart-line'></i> DMC Rankings",
-        subtitle: "Ranking-Daten für die DMC-Domains inklusive Europamaut.",
-        breadcrumb: "SEO / Rankings",
-      },
     }[state.activeView];
 
     els.pageTitle.innerHTML = config.title;
@@ -1597,70 +1557,10 @@
     }
   }
 
-  function formatDomainLabel(domain) {
-    const labels = {
-      "digitale-vignette-online.at": "Vignette AT",
-      "digitale-vignette-online.cz": "Vignette CZ",
-      "digitale-vignette-schweiz.de": "Schweiz",
-      "digitale-vignette-slowenien.de": "Slowenien",
-      "digitale-vignette-ro.online": "Rumänien",
-      "digitale-vignette-ungarn.de": "Ungarn",
-      "digitale-vignette-slowakei.de": "Slowakei",
-      "digitale-vignette-kroatien.de": "Kroatien",
-      "digitale-vignette-bulgarien.de": "Bulgarien",
-      "europamaut.com": "Europamaut",
-    };
-    return labels[domain] || domain;
-  }
-
-  async function ensureBacklinksOverviewLoaded() {
-    if (state.backlinks.loaded) return;
-
-    try {
-      const response = await fetch("/dashboards/dmc/api/backlinks.php");
-      const data = await response.json();
-      state.backlinks.rows = Array.isArray(data?.data) ? data.data : [];
-      state.backlinks.loaded = true;
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  function setBacklinkDomainFilter(domain) {
-    state.backlinks.selectedDomain = domain;
-    els.backlinksDetailBanner.textContent = domain
-      ? `Detailansicht gefiltert auf ${formatDomainLabel(domain)}.`
-      : "Detailansicht für alle DMC- und Europamaut-Zieldomains.";
-    applyBacklinksFrameFilters();
-    saveState();
-  }
-
-  function applyBacklinksFrameFilters() {
-    const frame = els.backlinksFrame;
-    if (!frame) return;
-    const base = "/dashboards/dmc/backlinks.php";
-    const domain = state.backlinks.selectedDomain || "";
-    const target = domain ? `${base}?domain=${encodeURIComponent(domain)}` : base;
-    if (frame.src !== target && !frame.src.endsWith(target.replace(/^\//, ""))) {
-      frame.src = target;
-    }
-  }
-
-  function applyRankingsFrameFilters() {
-    // DMC rankings page is already pre-filtered to DMC domains – no cross-frame manipulation needed.
-  }
-
   function setActiveView(view) {
-    if (!["content", "content-threads", "content-systemprompt", "seo-backlinks", "seo-rankings"].includes(view)) return;
+    if (!["content", "content-threads", "content-systemprompt"].includes(view)) return;
     state.activeView = view;
     renderActiveView();
-    if (view === "seo-backlinks") {
-      ensureBacklinksOverviewLoaded();
-      applyBacklinksFrameFilters();
-    }
-    if (view === "seo-rankings") {
-      applyRankingsFrameFilters();
-    }
     saveState();
     closeSidebar();
   }
@@ -2251,14 +2151,6 @@
     threadRefreshTimer = setInterval(loadContentHistory, THREAD_REFRESH_INTERVAL_MS);
     loadAllSystemPromptData();
 
-    if (state.activeView === "seo-backlinks") {
-      ensureBacklinksOverviewLoaded();
-      applyBacklinksFrameFilters();
-    }
-    if (state.activeView === "seo-rankings") {
-      applyRankingsFrameFilters();
-    }
-
     loadSharedDraft()
       .then((draft) => {
         if (!draft) return;
@@ -2299,10 +2191,6 @@
   els.sidebarToggle.addEventListener("click", openSidebar);
   els.mobileMenuBtn.addEventListener("click", openSidebar);
   els.sidebarOverlay.addEventListener("click", closeSidebar);
-  els.backlinksFrame?.addEventListener("load", applyBacklinksFrameFilters);
-  els.rankingsFrame?.addEventListener("load", applyRankingsFrameFilters);
-  els.btnShowAllBacklinks?.addEventListener("click", () => setBacklinkDomainFilter(""));
-  els.btnFocusEuropamaut?.addEventListener("click", () => setBacklinkDomainFilter("europamaut.com"));
   els.threadFilterAssignee?.addEventListener("change", updateThreadFiltersFromInputs);
   els.threadFilterCountry?.addEventListener("change", updateThreadFiltersFromInputs);
   els.threadFilterDateFrom?.addEventListener("change", updateThreadFiltersFromInputs);
