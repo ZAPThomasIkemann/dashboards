@@ -1,0 +1,3 @@
+# Sensitive config — never commit real credentials
+config.local.php
+*.env

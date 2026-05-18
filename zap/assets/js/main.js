@@ -1,3 +1,42 @@
+const SIDEBAR_COLLAPSE_KEY = 'zapSidebarCollapsed';
+
+function isDesktopViewport() {
+    return window.innerWidth > 900;
+}
+
+function getSidebarElements() {
+    return {
+        sidebar: document.getElementById('sidebar'),
+        overlay: document.getElementById('sidebarOverlay'),
+    };
+}
+
+function closeMobileSidebar() {
+    const { sidebar, overlay } = getSidebarElements();
+    sidebar?.classList.remove('open');
+    overlay?.classList.remove('open');
+}
+
+function applyDesktopSidebarState() {
+    if (!document.body || !isDesktopViewport()) {
+        return;
+    }
+
+    const collapsed = window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    closeMobileSidebar();
+}
+
+function syncSidebarMode() {
+    if (isDesktopViewport()) {
+        applyDesktopSidebarState();
+        return;
+    }
+
+    document.body.classList.remove('sidebar-collapsed');
+    closeMobileSidebar();
+}
+
 // Clock
 function updateClock() {
     const el = document.getElementById('topbarTime');
@@ -11,8 +50,19 @@ setInterval(updateClock, 1000);
 
 // Sidebar toggle
 function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
+    const { sidebar, overlay } = getSidebarElements();
+    if (!sidebar || !overlay) {
+        return;
+    }
+
+    if (isDesktopViewport()) {
+        const nextCollapsed = !document.body.classList.contains('sidebar-collapsed');
+        document.body.classList.toggle('sidebar-collapsed', nextCollapsed);
+        window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, nextCollapsed ? '1' : '0');
+        closeMobileSidebar();
+        return;
+    }
+
     sidebar.classList.toggle('open');
     overlay.classList.toggle('open');
 }
@@ -46,6 +96,10 @@ document.addEventListener('click', e => {
 // Close modal on ESC
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        closeMobileSidebar();
         document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
     }
 });
+
+document.addEventListener('DOMContentLoaded', syncSidebarMode);
+window.addEventListener('resize', syncSidebarMode);

@@ -1,23 +1,27 @@
 <?php
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
+$nav_backlinks_offline = ($current_page === 'backlinks_offline')
+    || ($current_page === 'backlinks' && isset($_GET['offline']) && (string) $_GET['offline'] === '1');
+$rankings_view = (string) ($_GET['view'] ?? 'discovery');
+$nav_daily_live_check = $current_page === 'rankings' && $rankings_view === 'daily';
+$email_addresses_count = null;
+try {
+    $pdo = db();
+    $email_addresses_count = (int) $pdo->query('SELECT COUNT(*) FROM competitor_domain_emails')->fetchColumn();
+} catch (Throwable $e) {
+    $email_addresses_count = null;
+}
 ?>
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-        <div class="sidebar-logo">
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 8L18 4L30 8V20C30 26.627 24.627 32 18 32C11.373 32 6 26.627 6 20V8Z" fill="url(#zapGradient)"/>
-                <path d="M20 11L14 19H18L16 25L22 17H18L20 11Z" fill="#1B1434"/>
-                <defs>
-                    <linearGradient id="zapGradient" x1="6" y1="4" x2="30" y2="32" gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stop-color="#18e888"/>
-                        <stop offset="100%" stop-color="#00c48b"/>
-                    </linearGradient>
-                </defs>
-            </svg>
-            <div class="sidebar-logo-text">
-                <span class="logo-zap">ZAP</span>
-                <span class="logo-dash">Dashboard</span>
-            </div>
+        <div class="sidebar-logo brand-lockup brand-lockup--sidebar" aria-label="ZAP Hosting">
+            <span class="brand-lockup__icon-wrap">
+                <img class="brand-lockup__icon" src="https://zap-cdn.com/interface/_images/logo/zaplogo200x200.png" alt="ZAP Logo">
+            </span>
+            <span class="brand-lockup__text">
+                <span class="brand-lockup__title">ZAP</span>
+                <span class="brand-lockup__subtitle">HOSTING</span>
+            </span>
         </div>
         <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
             <i class="fas fa-bars"></i>
@@ -30,13 +34,53 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
             <i class="fas fa-tachometer-alt"></i>
             <span>Overview</span>
         </a>
-        <a href="backlinks.php" class="nav-item <?= $current_page === 'backlinks' ? 'active' : '' ?>">
+
+        <div class="nav-section-label">Process</div>
+        <a href="zentrale.php" class="nav-item <?= $current_page === 'zentrale' ? 'active' : '' ?>">
+            <i class="fas fa-sliders"></i>
+            <span>0. Zentrale</span>
+        </a>
+        <a href="discovery.php" class="nav-item <?= $current_page === 'discovery' ? 'active' : '' ?>">
+            <i class="fas fa-binoculars"></i>
+            <span>1. Discovery</span>
+        </a>
+        <a href="rankings.php?view=daily" class="nav-item <?= $nav_daily_live_check ? 'active' : '' ?>">
+            <i class="fas fa-chart-line"></i>
+            <span>2. Daily Live Check</span>
+        </a>
+        <a href="competitor_backlinks.php" class="nav-item <?= $current_page === 'competitor_backlinks' ? 'active' : '' ?>">
             <i class="fas fa-link"></i>
+            <span>3. Competitor Backlinks</span>
+        </a>
+        <a href="email_addresses.php" class="nav-item <?= $current_page === 'email_addresses' ? 'active' : '' ?>">
+            <i class="fas fa-at"></i>
+            <span>4. E-Mail Addresses<?= $email_addresses_count !== null ? ' (' . number_format($email_addresses_count, 0, ',', '.') . ')' : '' ?></span>
+        </a>
+        <a href="emails_send.php" class="nav-item <?= $current_page === 'emails_send' ? 'active' : '' ?>">
+            <i class="fas fa-paper-plane"></i>
+            <span>5. E-Mails Send</span>
+        </a>
+
+        <div class="nav-section-label">Reference</div>
+        <a href="backlinks.php" class="nav-item <?= ($current_page === 'backlinks' && !$nav_backlinks_offline) ? 'active' : '' ?>">
+            <i class="fas fa-sitemap"></i>
             <span>Backlinks</span>
         </a>
-        <a href="rankings.php" class="nav-item <?= $current_page === 'rankings' ? 'active' : '' ?>">
-            <i class="fas fa-chart-line"></i>
-            <span>Rankings</span>
+        <a href="backlinks_offline.php" class="nav-item <?= $nav_backlinks_offline ? 'active' : '' ?>">
+            <i class="fas fa-unlink"></i>
+            <span>Offline Links</span>
+        </a>
+        <a href="daily_data.php" class="nav-item <?= $current_page === 'daily_data' ? 'active' : '' ?>">
+            <i class="fas fa-clock-rotate-left"></i>
+            <span>Daily Data</span>
+        </a>
+        <a href="landingpage_queue.php" class="nav-item <?= $current_page === 'landingpage_queue' ? 'active' : '' ?>">
+            <i class="fas fa-list-check"></i>
+            <span>Backlink Queue</span>
+        </a>
+        <a href="database.php" class="nav-item <?= $current_page === 'database' ? 'active' : '' ?>">
+            <i class="fas fa-database"></i>
+            <span>Database</span>
         </a>
 
         <div class="nav-section-label">Tools</div>

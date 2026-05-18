@@ -1,6 +1,7 @@
-<?php
+﻿<?php
 require_once '../config.php';
 require_once '../includes/dataforseo.php';
+require_once '../includes/dashboard_cache.php';
 
 header('Content-Type: application/json');
 set_time_limit(600);
@@ -106,6 +107,7 @@ function sync_rankings_for_domain(PDO $pdo, DataForSEO $dfs, string $domain, arr
 $pdo    = db();
 $dfs    = new DataForSEO();
 $action = $_GET['action'] ?? 'all';
+$scopedDomains = dashboard_scope_domains();
 
 // ── Backlinks: delegate to Python script ──────────────────────────────────────
 if (in_array($action, ['all', 'backlinks'], true)) {
@@ -143,13 +145,14 @@ if (in_array($action, ['all', 'backlinks'], true)) {
 // ── Rankings: einzelne Domain (für Fortschrittsbalken im Frontend) ────────────
 if ($action === 'rankings_domain') {
     $domain = $_GET['domain'] ?? '';
-    if ($domain === '' || !isset(MONITORED_DOMAINS[$domain])) {
+    if ($domain === '' || !isset($scopedDomains[$domain])) {
         echo json_encode(['success' => false, 'error' => 'Invalid domain']);
         exit;
     }
-    $meta   = MONITORED_DOMAINS[$domain];
+    $meta   = $scopedDomains[$domain];
     $result = sync_rankings_for_domain($pdo, $dfs, $domain, $meta);
-    $all    = array_keys(MONITORED_DOMAINS);
+    dashboard_refresh_rankings_cache($pdo);
+    $all    = array_keys($scopedDomains);
     $index  = array_search($domain, $all, true);
 
     echo json_encode([
@@ -157,7 +160,7 @@ if ($action === 'rankings_domain') {
         'domain'        => $domain,
         'result'        => $result,
         'domain_index'  => $index !== false ? $index : 0,
-        'total_domains' => count(MONITORED_DOMAINS),
+        'total_domains' => count($scopedDomains),
     ]);
     exit;
 }
@@ -165,9 +168,10 @@ if ($action === 'rankings_domain') {
 // ── Rankings sync (alle Domains) ─────────────────────────────────────────────
 if (in_array($action, ['all', 'rankings'], true)) {
     $results = [];
-    foreach (MONITORED_DOMAINS as $d => $meta) {
+    foreach ($scopedDomains as $d => $meta) {
         $results[$d] = sync_rankings_for_domain($pdo, $dfs, $d, $meta);
     }
+    dashboard_refresh_rankings_cache($pdo);
 
     echo json_encode([
         'success'   => true,

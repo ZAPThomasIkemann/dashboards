@@ -1,102 +1,86 @@
 <?php
 require_once '../config.php';
+require_once '../includes/dashboard_cache.php';
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
-
-$pdo    = db();
-$method = $_SERVER['REQUEST_METHOD'];
-
-function ensure_rankings_history_table(PDO $pdo): void {
-    static $done = false;
-    if ($done) {
-        return;
-    }
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS rankings_history (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            ranking_id BIGINT UNSIGNED NULL,
-            domain VARCHAR(255) NOT NULL,
-            brand VARCHAR(50) NULL,
-            keyword VARCHAR(255) NOT NULL,
-            url TEXT NULL,
-            position INT NULL,
-            previous_position INT NULL,
-            search_volume INT NULL,
-            cpc DECIMAL(10,2) NULL,
-            location_code VARCHAR(20) NULL,
-            language_code VARCHAR(20) NULL,
-            checked_at DATETIME NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_rankings_history_lookup (domain, keyword(191), location_code, checked_at),
-            KEY idx_rankings_history_checked (checked_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-    $done = true;
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
+    exit;
 }
 
+function rankings_apply_filters(array $payload, array $query): array {
+    $rows = $payload['data'] ?? [];
+    $history = $payload['history'] ?? [];
+    $summary = $payload['summary'] ?? [];
+
+    if (!empty($query['domain'])) {
+        $domain = (string) $query['domain'];
+        $rows = array_values(array_filter($rows, static fn(array $row): bool => (string) ($row['domain'] ?? '') === $domain));
+        $summary = array_values(array_filter($summary, static fn(array $row): bool => (string) ($row['domain'] ?? '') === $domain));
+        $history = array_values(array_filter($history, static fn(array $row): bool => (string) ($row['domain'] ?? '') === $domain));
+    }
+
+    if (!empty($query['brand'])) {
+        $brand = (string) $query['brand'];
+        $rows = array_values(array_filter($rows, static fn(array $row): bool => (string) ($row['brand'] ?? '') === $brand));
+        $summary = array_values(array_filter($summary, static fn(array $row): bool => (string) ($row['brand'] ?? '') === $brand));
+        $history = array_values(array_filter($history, static fn(array $row): bool => (string) ($row['brand'] ?? '') === $brand));
+    }
+
+    if (!empty($query['keyword'])) {
+        $keyword = mb_strtolower((string) $query['keyword']);
+        $rows = array_values(array_filter($rows, static fn(array $row): bool => mb_stripos((string) ($row['keyword'] ?? ''), $keyword) !== false));
+        $historyKeys = [];
+        foreach ($rows as $row) {
+            $historyKeys[(string) ($row['domain'] ?? '') . '||' . (string) ($row['keyword'] ?? '') . '||' . (string) ($row['location_code'] ?? '')] = true;
+        }
+        $history = array_values(array_filter($history, static function (array $row) use ($historyKeys): bool {
+            $key = (string) ($row['domain'] ?? '') . '||' . (string) ($row['keyword'] ?? '') . '||' . (string) ($row['location_code'] ?? '');
+            return isset($historyKeys[$key]);
+        }));
+    }
+
+    if (isset($query['min_pos']) && $query['min_pos'] !== '') {
+        $minPos = (int) $query['min_pos'];
+        $rows = array_values(array_filter($rows, static fn(array $row): bool => isset($row['position']) && (int) $row['position'] >= $minPos));
+    }
+    if (isset($query['max_pos']) && $query['max_pos'] !== '') {
+        $maxPos = (int) $query['max_pos'];
+        $rows = array_values(array_filter($rows, static fn(array $row): bool => isset($row['position']) && (int) $row['position'] <= $maxPos));
+    }
+
+    usort($rows, static function (array $a, array $b): int {
+        $positionCmp = ((int) ($a['position'] ?? 999999)) <=> ((int) ($b['position'] ?? 999999));
+        if ($positionCmp !== 0) {
+            return $positionCmp;
+        }
+        return ((int) ($b['search_volume'] ?? -1)) <=> ((int) ($a['search_volume'] ?? -1));
+    });
+
+    $total = count($rows);
+    $limit = min((int) ($query['limit'] ?? 5000), 10000);
+    $offset = max(0, (int) ($query['offset'] ?? 0));
+    $rows = array_slice($rows, $offset, $limit);
+
+    return [
+        'success' => true,
+        'total' => $total,
+        'data' => $rows,
+        'summary' => array_values($summary),
+        'history' => array_values($history),
+        'cache_meta' => $payload['cache_meta'] ?? null,
+    ];
+}
+
+$pdo = db();
+$method = $_SERVER['REQUEST_METHOD'];
+
 if ($method === 'GET') {
-    ensure_rankings_history_table($pdo);
-    $domain   = $_GET['domain']   ?? null;
-    $brand    = $_GET['brand']    ?? null;
-    $keyword  = $_GET['keyword']  ?? null;
-    $minPos   = isset($_GET['min_pos']) ? (int)$_GET['min_pos'] : null;
-    $maxPos   = isset($_GET['max_pos']) ? (int)$_GET['max_pos'] : null;
-    $limit    = min((int)($_GET['limit'] ?? 5000), 10000);
-    $offset   = (int)($_GET['offset'] ?? 0);
-
-    $where = ['1=1'];
-    $params = [];
-
-    if ($domain)  { $where[] = 'domain = ?'; $params[] = $domain; }
-    if ($brand)   { $where[] = 'brand = ?'; $params[] = $brand; }
-    if ($keyword) { $where[] = 'keyword LIKE ?'; $params[] = "%$keyword%"; }
-    if ($minPos !== null) { $where[] = 'position >= ?'; $params[] = $minPos; }
-    if ($maxPos !== null) { $where[] = 'position <= ?'; $params[] = $maxPos; }
-
-    $whereStr = implode(' AND ', $where);
-    $total = $pdo->prepare("SELECT COUNT(*) FROM rankings WHERE $whereStr");
-    $total->execute($params);
-    $totalCount = (int)$total->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT * FROM rankings WHERE $whereStr ORDER BY position ASC, search_volume DESC LIMIT $limit OFFSET $offset");
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
-
-    $historyStmt = $pdo->query("
-        SELECT domain, brand, keyword, position, search_volume, location_code, language_code, checked_at
-        FROM rankings_history
-        WHERE checked_at >= DATE_SUB(NOW(), INTERVAL 730 DAY)
-        ORDER BY checked_at ASC, domain ASC, keyword ASC
-    ");
-    $history = $historyStmt->fetchAll();
-
-    // Domain summary stats
-    $summaryStmt = $pdo->query("
-        SELECT domain, brand,
-               COUNT(*) as total_keywords,
-               MIN(position) as best_position,
-               SUM(CASE WHEN position <= 3 THEN 1 ELSE 0 END) as top3,
-               SUM(CASE WHEN position <= 10 THEN 1 ELSE 0 END) as top10,
-               SUM(CASE WHEN position <= 100 THEN 1 ELSE 0 END) as top100,
-               SUM(COALESCE(search_volume, 0)) as total_volume,
-               MAX(last_checked) as last_checked
-        FROM rankings
-        GROUP BY domain, brand
-        ORDER BY brand, domain
-    ");
-    $summary = $summaryStmt->fetchAll();
-
-    echo json_encode([
-        'success'  => true,
-        'total'    => $totalCount,
-        'data'     => $rows,
-        'summary'  => $summary,
-        'history'  => $history,
-    ]);
+    echo json_encode(rankings_apply_filters(dashboard_get_rankings_cache($pdo), $_GET));
     exit;
 }
 
@@ -105,25 +89,31 @@ if ($method === 'POST') {
     $stmt = $pdo->prepare("INSERT INTO rankings (domain, brand, keyword, url, position, search_volume, cpc, competition, location_code, language_code, last_checked)
         VALUES (:domain, :brand, :keyword, :url, :position, :search_volume, :cpc, :competition, :location_code, :language_code, NOW())");
     $stmt->execute([
-        ':domain'        => $body['domain'],
-        ':brand'         => $body['brand'],
-        ':keyword'       => $body['keyword'],
-        ':url'           => $body['url'] ?? null,
-        ':position'      => $body['position'] ?? null,
+        ':domain' => $body['domain'],
+        ':brand' => $body['brand'],
+        ':keyword' => $body['keyword'],
+        ':url' => $body['url'] ?? null,
+        ':position' => $body['position'] ?? null,
         ':search_volume' => $body['search_volume'] ?? null,
-        ':cpc'           => $body['cpc'] ?? null,
-        ':competition'   => $body['competition'] ?? null,
+        ':cpc' => $body['cpc'] ?? null,
+        ':competition' => $body['competition'] ?? null,
         ':location_code' => $body['location_code'] ?? 2276,
         ':language_code' => $body['language_code'] ?? 'de',
     ]);
+    dashboard_refresh_rankings_cache($pdo);
     echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
     exit;
 }
 
 if ($method === 'DELETE') {
-    $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
-    if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'error' => 'ID required']); exit; }
-    $pdo->prepare("DELETE FROM rankings WHERE id = ?")->execute([$id]);
+    $id = isset($_GET['id']) ? (int) $_GET['id'] : null;
+    if (!$id) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'ID required']);
+        exit;
+    }
+    $pdo->prepare('DELETE FROM rankings WHERE id = ?')->execute([$id]);
+    dashboard_refresh_rankings_cache($pdo);
     echo json_encode(['success' => true]);
     exit;
 }

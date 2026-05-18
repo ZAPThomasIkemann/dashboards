@@ -1,0 +1,151 @@
+<?php require_once 'config.php'; ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3. Competitor Backlinks - ZAP Dashboard</title>
+    <?php include 'includes/favicon.php'; ?>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/main.css?v=20260507a">
+    <style>
+        .step-grid { display:grid; gap:18px; }
+        .step-toolbar { display:grid; grid-template-columns: minmax(180px,240px) minmax(160px,220px) minmax(220px,1fr) minmax(220px,1fr); gap:12px; align-items:end; }
+        .step-field { display:grid; gap:8px; }
+        .step-field label { color:var(--zap-text); font-size:.86rem; font-weight:600; }
+        .step-empty { padding:34px; border:1px dashed rgba(255,255,255,.10); border-radius:18px; text-align:center; color:var(--zap-text-muted); }
+        .step-link { color:var(--zap-text); text-decoration:none; word-break:break-word; }
+        .step-link:hover { color:var(--zap-green); }
+        .step-badge { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:.78rem; font-weight:700; }
+        .step-badge.ok { background:rgba(87,188,84,.14); color:#d7ffd5; border:1px solid rgba(87,188,84,.3); }
+        .step-badge.muted { background:rgba(255,255,255,.05); color:var(--zap-text-muted); border:1px solid rgba(255,255,255,.08); }
+        .step-badge.warn { background:rgba(255,183,77,.14); color:#ffe2a8; border:1px solid rgba(255,183,77,.34); }
+        .step-badge.info { background:rgba(0,200,255,.12); color:#bff6ff; border:1px solid rgba(0,200,255,.28); }
+        .step-badge.error { background:rgba(255,92,92,.14); color:#ffd4d4; border:1px solid rgba(255,92,92,.30); }
+        .step-table td, .step-table th { vertical-align:top; }
+        .queue-grid { display:grid; gap:18px; }
+        .queue-live-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:14px; }
+        .queue-live-title { display:grid; gap:6px; }
+        .queue-current-card { padding:18px 20px; border-radius:18px; background:linear-gradient(135deg, rgba(24,232,136,.10), rgba(0,200,255,.08)); border:1px solid rgba(24,232,136,.20); display:grid; gap:8px; }
+        .queue-current-label { color:var(--zap-text-muted); font-size:.78rem; }
+        .queue-current-domain { color:var(--zap-text); font-size:1.35rem; font-weight:800; line-height:1.15; word-break:break-word; }
+        .queue-current-url { color:var(--zap-text-muted); font-size:.84rem; word-break:break-word; }
+        .queue-meta { color:var(--zap-text-muted); font-size:.8rem; text-align:right; min-width:180px; }
+        .queue-table td, .queue-table th { vertical-align:top; }
+        .queue-status-cell { white-space:nowrap; }
+        @media (max-width: 1200px) { .step-toolbar { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .queue-live-head { flex-direction:column; } .queue-meta { text-align:left; min-width:0; } }
+    </style>
+</head>
+<body>
+    <?php include 'includes/sidebar.php'; ?>
+    <div class="main-content">
+        <?php include 'includes/topbar.php'; ?>
+        <div class="page-content">
+            <div class="page-header">
+                <h1><i class="fas fa-link"></i> 3. Competitor Backlinks</h1>
+                <span class="page-subtitle">Unique competitor backlinks from the inventory. This step shows each distinct backlink URL that was discovered for top-ranking competitors.</span>
+            </div>
+
+            <div class="step-grid">
+                <div class="card queue-grid">
+                    <div class="queue-live-head">
+                        <div class="queue-live-title">
+                            <h2 class="rankings-summary-title"><i class="fas fa-at"></i> Live E-Mail Check</h2>
+                            <span class="page-subtitle" style="margin:0;">Shows which competitor backlink domain is currently being checked for imprint, contact, and email details. The table refreshes automatically.</span>
+                        </div>
+                        <div class="queue-meta">
+                            <div id="cbQueueRefreshText">Refreshing queue...</div>
+                            <div id="cbQueueHeartbeatText">Checking for email addresses every 5 seconds</div>
+                        </div>
+                    </div>
+                    <div class="queue-current-card">
+                        <span class="queue-current-label" id="cbQueueCurrentLabel">Checking domain...</span>
+                        <span class="queue-current-domain" id="cbQueueCurrentDomain">Loading...</span>
+                        <span class="queue-current-url" id="cbQueueCurrentUrl"></span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table queue-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Domain</th>
+                                    <th>Homepage</th>
+                                    <th>Example Backlink</th>
+                                    <th>Backlinks</th>
+                                    <th>Competitors</th>
+                                    <th>Email</th>
+                                    <th>Imprint URL</th>
+                                    <th>Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cbQueueBody">
+                                <tr class="loading-row"><td colspan="8"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="step-toolbar">
+                        <div class="step-field">
+                            <label for="cbCompetitorSelect">Competitor</label>
+                            <select id="cbCompetitorSelect" class="search-input"></select>
+                        </div>
+                        <div class="step-field">
+                            <label for="cbFollowSelect">Follow</label>
+                            <select id="cbFollowSelect" class="search-input">
+                                <option value="">All</option>
+                                <option value="dofollow">dofollow</option>
+                                <option value="nofollow">nofollow</option>
+                            </select>
+                        </div>
+                        <div class="step-field">
+                            <label for="cbKeywordSearch">Keyword / Domain</label>
+                            <input type="text" id="cbKeywordSearch" class="search-input" placeholder="Search keyword, competitor, backlink domain...">
+                        </div>
+                        <div class="step-field">
+                            <label for="cbBacklinkUrlSearch">Backlink URL contains</label>
+                            <input type="text" id="cbBacklinkUrlSearch" class="search-input" placeholder="Filter backlink URL...">
+                        </div>
+                    </div>
+                    <div class="table-footer" style="margin-top:12px;padding:0;border:0;">
+                        <span id="cbInfoText">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="table-wrap">
+                        <table class="data-table step-table">
+                            <thead>
+                                <tr>
+                                    <th>Discovered</th>
+                                    <th>Keyword</th>
+                                    <th>SV</th>
+                                    <th>Competitor</th>
+                                    <th>Competitor URL</th>
+                                    <th>Backlink Domain</th>
+                                    <th>Backlink URL</th>
+                                    <th>Target URL</th>
+                                    <th>DR</th>
+                                    <th>Follow</th>
+                                    <th>Email Status</th>
+                                    <th>First Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cbBody">
+                                <tr class="loading-row"><td colspan="12"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/main.js?v=20260507a"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260508b"></script>
+</body>
+</html>

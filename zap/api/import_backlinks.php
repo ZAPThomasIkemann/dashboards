@@ -1,5 +1,6 @@
 <?php
 require_once '../config.php';
+require_once '../includes/dashboard_cache.php';
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -134,6 +135,8 @@ while (($row = fgetcsv($file, 0, $delim)) !== false) {
 }
 
 fclose($file);
+
+dashboard_refresh_backlinks_cache($pdo);
 
 echo json_encode([
     'success'  => true,
