@@ -5,13 +5,6 @@ let competitorQueueRows = [];
 let competitorQueueView = 'all';
 const competitorPipelineApiBase = '/api';
 
-// Auto-advance: dispatch next batch automatically when the current batch finishes.
-// Guards against concurrent or too-frequent dispatches.
-let autoDispatchInFlight = false;
-let autoDispatchLastAt = 0;
-const AUTO_DISPATCH_COOLDOWN_MS = 20000; // minimum gap between auto-dispatches
-const DISPATCH_BATCH_SIZE = 5;           // domains per dispatch call
-
 document.addEventListener('DOMContentLoaded', () => {
   const hasCompetitorBacklinksPage = Boolean(document.getElementById('cbBody'));
   const hasControlPage = Boolean(document.getElementById('cbControlGrid'));
@@ -156,15 +149,64 @@ function renderCompetitorBacklinkQueue(payload) {
   competitorQueueRows = Array.isArray(payload.rows) ? payload.rows : [];
   renderCompetitorBacklinkQueueRows(competitorQueueRows);
 
-  // Auto-advance: when not paused and nothing is processing but queued domains exist,
-  // automatically dispatch the next batch so processing continues without manual clicks.
-  const paused = String((payload.controls || {}).pause_backlinks || '0') === '1';
-  const processing = Number((payload.summary || {}).processing || 0);
-  const queued = Number((payload.summary || {}).queued || 0);
-  if (!paused && processing === 0 && queued > 0) {
-    maybeAutoDispatch();
+  // Detect and surface stuck batch_claimed domains (n8n orphans)
+  checkForStuckRun(payload.active_run || null);
+}
+
+// Stuck-run detection: surfaces an orange warning + "Fix" button when the
+// active processing run has been sitting unfinished for more than 1 hour.
+// These are n8n batch_claimed orphans that no worker will ever complete.
+const STUCK_RUN_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+function checkForStuckRun(activeRun) {
+  const fixBtn  = document.getElementById('cbFixStuckBtn');
+  const warning = document.getElementById('cbStuckWarning');
+  const count   = document.getElementById('cbStuckCount');
+  const details = document.getElementById('cbStuckDetails');
+
+  if (!activeRun || !activeRun.started_at) {
+    if (fixBtn)  fixBtn.style.display  = 'none';
+    if (warning) warning.style.display = 'none';
+    return;
+  }
+
+  const startedAt = parseUtcLikeDate(activeRun.started_at);
+  const ageMs     = startedAt ? (Date.now() - startedAt.getTime()) : 0;
+  const stuckRows = Array.isArray(activeRun.rows) ? activeRun.rows : [];
+  const stuckCount = Number(activeRun.counts?.processing || stuckRows.length || 0);
+
+  if (ageMs < STUCK_RUN_THRESHOLD_MS || stuckCount === 0) {
+    if (fixBtn)  fixBtn.style.display  = 'none';
+    if (warning) warning.style.display = 'none';
+    return;
+  }
+
+  // Show the "Fix" button and warning banner
+  const ageHours = Math.round(ageMs / 3600000);
+  const domainList = stuckRows.map((r) => escapeHtml(r.domain_key || '')).join(', ');
+
+  if (count)   count.textContent = String(stuckCount);
+  if (fixBtn)  fixBtn.style.display  = '';
+  if (warning) warning.style.display = '';
+  if (details) {
+    details.textContent = stuckCount === 1
+      ? `${domainList || stuckCount + ' Domain(s)'} (seit ${ageHours} Std.) — `
+      : `${stuckCount} Domains (${domainList ? domainList.substring(0, 80) + (domainList.length > 80 ? '…' : '') : ''}) seit ${ageHours} Std. — `;
+  }
+
+  // Auto-reset if stuck for more than 24 hours — no user interaction needed
+  if (ageMs > 24 * 60 * 60 * 1000 && !autoResetDone) {
+    autoResetDone = true;
+    resetProcessingDomains('stuck_batches').then((result) => {
+      if (result && result.reset_count > 0) {
+        showToast(`Auto-Reset: ${result.reset_count} feststeckende Domain(s) zurückgesetzt.`, 'success');
+        loadCompetitorBacklinkQueue();
+      }
+    });
   }
 }
+
+let autoResetDone = false;
 
 function renderProcessingStep(value) {
   const step = String(value || '').trim();
@@ -182,7 +224,25 @@ function renderProcessingStep(value) {
 function renderQueueSummary(summary) {
   const el = document.getElementById('cbQueueSummaryText');
   if (!el) return;
-  el.textContent = `${formatNumber(summary.total || 0)} domains total, ${formatNumber(summary.processing || 0)} processing, ${formatNumber(summary.queued || 0)} queued, ${formatNumber(summary.found_email || 0)} with email.`;
+
+  const parts = [
+    `${formatNumber(summary.total || 0)} domains total`,
+    `${formatNumber(summary.queued || 0)} queued`,
+  ];
+
+  // Actively-enriching counts from the Python DB poller
+  const activeNow = (summary.fetching_imprint || 0) + (summary.extracting || 0);
+  if (activeNow > 0) {
+    parts.push(`${formatNumber(activeNow)} enriching now`);
+  }
+
+  // Stuck n8n batch_claimed orphans
+  if (summary.processing > 0) {
+    parts.push(`${formatNumber(summary.processing)} stuck (batch_claimed)`);
+  }
+
+  parts.push(`${formatNumber(summary.found_email || 0)} with email`);
+  el.textContent = parts.join(', ') + '.';
 }
 
 function renderCompetitorBacklinkQueueRows(rows) {
@@ -215,7 +275,7 @@ function renderCompetitorBacklinkQueueRows(rows) {
 
   body.innerHTML = filteredRows.map((row) => `
     <tr>
-      <td class="queue-status-cell">${renderQueueStatus(row.status || row.email_status)}</td>
+      <td class="queue-status-cell">${renderQueueStatus(row.status || row.email_status, row.processing_step)}</td>
       <td>${escapeHtml(row.domain_key || row.referring_domain || '')}</td>
       <td><a class="step-link" href="${escapeAttr(row.domain_home_url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.domain_home_url || '')}</a></td>
       <td><a class="step-link" href="${escapeAttr(row.sample_referring_page_url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.sample_referring_page_url || '')}</a></td>
@@ -240,8 +300,10 @@ function syncCompetitorQueueButtons() {
   if (processingBtn) processingBtn.classList.toggle('is-selected', competitorQueueView === 'processing');
 }
 
-function renderQueueStatus(statusValue) {
+function renderQueueStatus(statusValue, processingStep) {
   const status = String(statusValue || '').trim().toLowerCase();
+  const step   = String(processingStep || '').trim().toLowerCase();
+
   if (status === 'approved_for_outreach') {
     return '<span class="step-badge ok">approved</span>';
   }
@@ -251,10 +313,24 @@ function renderQueueStatus(statusValue) {
   if (status === 'dispatching') {
     return '<span class="step-badge info">dispatching</span>';
   }
+  // Python DB-poller active statuses — domain is actively being enriched right now
+  if (status === 'fetching_imprint') {
+    return '<span class="step-badge info">fetching imprint</span>';
+  }
+  if (status === 'extracting') {
+    return '<span class="step-badge info">extracting email</span>';
+  }
   if (status === 'processing' || status === 'claimed' || status === 'running') {
+    // Distinguish between an active DB-poll claim and a stuck n8n batch_claimed orphan
+    if (step === 'batch_claimed') {
+      return '<span class="step-badge warn" title="Feststeckend seit über einer Stunde — klicke \'Fix Stuck Domains\'">⚠ stuck</span>';
+    }
+    if (step === 'db_poll') {
+      return '<span class="step-badge info">enriching</span>';
+    }
     return '<span class="step-badge info">processing</span>';
   }
-  if (status === 'found') {
+  if (status === 'found' || status === 'found_email') {
     return '<span class="step-badge ok">found</span>';
   }
   if (status === 'no_email') {
@@ -319,10 +395,10 @@ function renderControls(controls) {
   if (!grid) return;
 
   const cards = [
-    { key: 'pause_keywords', title: 'Tägliche Keyword Aktualisierung', text: 'Hält ZAP 2 an oder setzt es fort, also die tägliche Aufnahme neuer Keywords aus der Rankings-API.' },
-    { key: 'pause_backlinks', title: 'Wettbewerber Backlinks claimen', text: 'Hält ZAP 3 an oder setzt es fort, also das Claimen neuer Wettbewerber-URLs für den Backlink-Abruf.' },
-    { key: 'pause_enrichment', title: 'E-Mail Adressen suchen', text: 'Hält neue Domain-Batches für ZAP 4 an oder setzt sie fort.' },
-    { key: 'pause_outreach', title: 'E-Mail Outreach', text: 'Reservierter Stop-Schalter für ZAP 5 und den späteren Versand freigegebener Outreach-Mails.' },
+    { key: 'pause_keywords',  title: 'ZAP 2 — SERP Check',              text: 'Täglicher SERP-Lauf: findet neue Keywords und füllt die Backlink-Queue. Python-Daemon, läuft autonom.' },
+    { key: 'pause_backlinks', title: 'ZAP 3 — Backlinks claimen',        text: 'Python-Worker: liest Backlinks via DataForSEO und schreibt sie in die Datenbank. Läuft autonom.' },
+    { key: 'pause_enrichment',title: 'ZAP 4 — E-Mail Enrichment',        text: 'Python DB-Poller: verarbeitet queued Domains (Imprint → E-Mail). Läuft autonom alle ~4 Minuten. Pause stoppt den nächsten Batch.' },
+    { key: 'pause_outreach',  title: 'ZAP 5 — Outreach',                 text: 'Outreach-Mails versenden. Schalter reserviert für den späteren Versand freigegebener Domains.' },
   ];
 
   grid.innerHTML = cards.map((card) => {
@@ -353,11 +429,22 @@ function renderControls(controls) {
 function renderControlSummary(summary, controls) {
   const summaryText = document.getElementById('cbControlsSummaryText');
   if (!summaryText) return;
+
   const pausedStages = Object.entries(controls || {})
     .filter(([key, value]) => key.startsWith('pause_') && String(value) === '1')
     .map(([key]) => key.replace('pause_', ''))
     .join(', ');
-  summaryText.textContent = `${formatNumber(summary.total || 0)} domains total, ${formatNumber(summary.queued || 0)} queued, ${formatNumber(summary.processing || 0)} processing${pausedStages ? `, paused: ${pausedStages}` : ''}`;
+
+  const activeNow = Number(summary.fetching_imprint || 0) + Number(summary.extracting || 0);
+  const parts = [
+    `${formatNumber(summary.total || 0)} Domains gesamt`,
+    `${formatNumber(summary.queued || 0)} in der Queue`,
+  ];
+  if (activeNow > 0) parts.push(`${formatNumber(activeNow)} gerade aktiv`);
+  if (summary.processing > 0) parts.push(`${formatNumber(summary.processing)} stuck`);
+  if (pausedStages) parts.push(`pausiert: ${pausedStages}`);
+
+  summaryText.textContent = parts.join(' · ');
 }
 
 async function updateControl(controlKey, controlValue) {
@@ -367,66 +454,60 @@ async function updateControl(controlKey, controlValue) {
     body: JSON.stringify({ control_key: controlKey, control_value: controlValue }),
   });
 
-  if (controlKey === 'pause_backlinks') {
-    if (controlValue === '0') {
-      // Resume: immediately dispatch the first batch of DISPATCH_BATCH_SIZE domains.
-      // Reset the auto-dispatch cooldown so the first batch fires without delay.
-      autoDispatchLastAt = 0;
-      await silentDispatch();
-    } else if (controlValue === '1') {
-      // Pause: reset any domains that are stuck in 'processing' or 'dispatching'
-      // so they re-enter the queue and are not lost.
-      await resetProcessingDomains();
-    }
+  // When pausing enrichment, reset any orphaned batch_claimed domains so they
+  // re-enter the queue and will be picked up by the Python poller on the next cycle.
+  if (controlKey === 'pause_enrichment' && controlValue === '1') {
+    await resetProcessingDomains('stuck_batches');
   }
 
   await Promise.all([loadCompetitorControls(), loadCompetitorBacklinkQueue()]);
 }
 
-// Reset domains stuck in 'processing' / 'dispatching' back to queued state.
-async function resetProcessingDomains() {
+// Reset domains stuck in 'processing/batch_claimed' back to queued state.
+// mode: 'stuck_batches' — only n8n batch_claimed orphans older than 1h (safe)
+//       'all_processing' — all processing rows older than 1h (aggressive)
+async function resetProcessingDomains(mode = 'stuck_batches') {
   try {
     const res = await fetch('api/reset_domain_processing.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
     });
     const d = await res.json();
     if (d.success && d.reset_count > 0) {
       showToast(d.message || `${d.reset_count} Domain(s) zurückgesetzt.`, 'success');
     }
+    return d;
   } catch (e) {
-    // Non-critical: don't block the pause action
+    return null;
   }
 }
 
-// Dispatch the next DISPATCH_BATCH_SIZE domains silently (no button state change, no error toast).
-async function silentDispatch() {
-  autoDispatchInFlight = true;
-  autoDispatchLastAt = Date.now();
+// Called by the "Fix Stuck Domains" button in the UI
+async function triggerFixStuckDomains() {
+  const btn = document.getElementById('cbFixStuckBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting…'; }
   try {
-    const res = await fetch(zapTriggerApi, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'dispatch_queued_domains', batch: DISPATCH_BATCH_SIZE }),
-    });
-    const d = await res.json();
-    if (d.success) {
-      showToast(d.message || `${DISPATCH_BATCH_SIZE} Domains zur Verarbeitung gestartet.`, 'success');
+    const result = await resetProcessingDomains('stuck_batches');
+    if (result && result.success) {
+      showToast(result.message || 'Feststeckende Domains zurückgesetzt.', 'success');
+      const warning = document.getElementById('cbStuckWarning');
+      if (warning) warning.style.display = 'none';
+      if (btn)     btn.style.display     = 'none';
+      autoResetDone = false;
+      await loadCompetitorBacklinkQueue();
+    } else {
+      showToast(result?.message || 'Keine feststeckenden Domains gefunden.', 'success');
     }
   } catch (e) {
-    // Silently ignore network errors during auto/silent dispatch
+    showToast('Reset fehlgeschlagen: ' + e.message, 'error');
   } finally {
-    autoDispatchInFlight = false;
+    if (btn) {
+      btn.disabled = false;
+      const stuckCount = document.getElementById('cbStuckCount')?.textContent || '0';
+      btn.innerHTML = `<i class="fas fa-wrench"></i> Fix Stuck Domains (${stuckCount})`;
+    }
   }
-}
-
-// Throttled auto-dispatch: fires only when no dispatch is already in flight
-// and the cooldown period has elapsed.
-async function maybeAutoDispatch() {
-  const now = Date.now();
-  if (autoDispatchInFlight || (now - autoDispatchLastAt) < AUTO_DISPATCH_COOLDOWN_MS) return;
-  await silentDispatch();
-  setTimeout(loadCompetitorBacklinkQueue, 2000);
 }
 
 async function loadIgnoredDomains() {
@@ -455,7 +536,7 @@ function renderIgnoredDomains(rows) {
 
   body.innerHTML = rows.map((row) => `
     <tr>
-      <td>${renderQueueStatus(row.status)}</td>
+      <td>${renderQueueStatus(row.status, row.processing_step)}</td>
       <td>${escapeHtml(row.domain_key || '')}</td>
       <td>${escapeHtml(row.ignored_reason || '-')}</td>
       <td>${escapeHtml(formatNumber(row.domain_rank_max, 0))}</td>
@@ -547,51 +628,103 @@ async function loadPipelineStatus() {
     const d = await res.json();
     if (!d.success) return;
 
+    const controls    = d.controls || {};
+    const q           = d.queue    || {};   // competitor_backlink_queue (ZAP 3)
+    const dq          = d.domain_queue || {}; // competitor_domains (ZAP 4)
+
+    // ── Derive per-stage status ────────────────────────────────────────────
+    const serpRunning    = Boolean(d.serp_running);
+    const backlinkPaused = String(controls.pause_backlinks || '0') === '1';
+    const enrichPaused   = String(controls.pause_enrichment || '0') === '1';
+
+    const blPending    = Number(q.pending    || 0);
+    const blProcessing = Number(q.processing || 0);
+    const blDone       = Number(q.done       || 0);
+
+    const dqQueued    = Number(dq.queued      || 0);
+    const dqEnriching = Number(dq.processing  || 0) +
+                        Number(dq.fetching_imprint || 0) +
+                        Number(dq.extracting || 0);
+    const dqFound     = Number(dq.found_email || 0);
+    const dqTotal     = Object.values(dq).reduce((a, b) => a + Number(b || 0), 0);
+
+    // ── Build human-readable stage chips ──────────────────────────────────
+    function stageChip(label, state, detail) {
+      const colors = {
+        running: 'color:#18e888',
+        paused:  'color:#fbbf24',
+        idle:    'color:#8b9ab5',
+        done:    'color:#00c8ff',
+      };
+      const icons = {
+        running: 'fa-spinner fa-spin',
+        paused:  'fa-pause-circle',
+        idle:    'fa-circle',
+        done:    'fa-check-circle',
+      };
+      const style = colors[state] || colors.idle;
+      const icon  = icons[state]  || icons.idle;
+      return `<span style="${style};white-space:nowrap;margin-right:14px"><i class="fas ${icon}" style="margin-right:4px"></i><b>${label}</b>${detail ? ' — ' + detail : ''}</span>`;
+    }
+
+    // ZAP 2 — SERP (keywords → queue fill)
+    const serp2 = serpRunning
+      ? stageChip('ZAP 2 SERP', 'running', 'läuft')
+      : stageChip('ZAP 2 SERP', 'idle', d.last_serp_log
+          ? d.last_serp_log.replace(/.*INFO\s*/, '').substring(0, 40) + '…'
+          : 'idle');
+
+    // ZAP 3 — Backlink Claiming
+    let zap3state, zap3detail;
+    if (backlinkPaused) {
+      zap3state  = 'paused';
+      zap3detail = `pausiert, ${blDone.toLocaleString('de-DE')} done`;
+    } else if (blProcessing > 0 || blPending > 0) {
+      zap3state  = 'running';
+      zap3detail = `${blProcessing} aktiv, ${blPending.toLocaleString('de-DE')} pending`;
+    } else if (blDone > 0) {
+      zap3state  = 'done';
+      zap3detail = `${blDone.toLocaleString('de-DE')} done`;
+    } else {
+      zap3state  = 'idle';
+      zap3detail = 'Queue leer';
+    }
+    const serp3 = stageChip('ZAP 3 Backlinks', zap3state, zap3detail);
+
+    // ZAP 4 — Email Enrichment (Python DB Poller)
+    let zap4state, zap4detail;
+    if (enrichPaused && dqEnriching === 0) {
+      zap4state  = 'paused';
+      zap4detail = `pausiert, ${dqQueued.toLocaleString('de-DE')} warten`;
+    } else if (dqEnriching > 0) {
+      zap4state  = 'running';
+      zap4detail = `${dqEnriching} aktiv, ${dqQueued.toLocaleString('de-DE')} queued, ${dqFound.toLocaleString('de-DE')} E-Mails`;
+    } else if (dqQueued > 0) {
+      zap4state  = enrichPaused ? 'paused' : 'idle';
+      zap4detail = `${dqQueued.toLocaleString('de-DE')} queued, ${dqFound.toLocaleString('de-DE')} E-Mails gefunden`;
+    } else {
+      zap4state  = 'done';
+      zap4detail = `${dqTotal.toLocaleString('de-DE')} Domains verarbeitet`;
+    }
+    const serp4 = stageChip('ZAP 4 E-Mail', zap4state, zap4detail);
+
+    // ── Overall bar color: green if anything running, yellow if paused/idle, etc.
+    const anyRunning = serpRunning || blProcessing > 0 || blPending > 0 || dqEnriching > 0;
+    const allPaused  = backlinkPaused && enrichPaused;
+    const barColor   = anyRunning ? '#18e888' : allPaused ? '#fbbf24' : '#00c8ff';
+
     const icon = document.getElementById('cbStatusIcon');
     const text = document.getElementById('cbStatusText');
     const bar  = document.getElementById('cbPipelineStatusBar');
 
-    const q       = d.queue || {};
-    const pending    = q.pending    || 0;
-    const processing = q.processing || 0;
-    const done       = q.done       || 0;
-    const paused     = String((d.controls || {}).pause_backlinks || '0') === '1';
-
-    let statusColor = '#18e888';
-    let iconHtml    = '<i class="fas fa-check-circle"></i>';
-    let statusMsg   = '';
-
-    // Domain queue info
-    const dq         = d.domain_queue || {};
-    const dqQueued    = dq.queued      || 0;
-    const dqProcess   = dq.processing  || 0;
-    const dqFound     = dq.found_email || 0;
-    const dqTotal     = Object.values(dq).reduce((a,b) => a + (b||0), 0);
-    const dqPart      = dqQueued > 0
-      ? ` | <b>Domain-Queue: ${dqQueued.toLocaleString('de-DE')} queued, ${dqProcess} processing, ${dqFound} E-Mails gefunden</b>`
-      : ` | Domain-Queue: ${dqTotal.toLocaleString('de-DE')} Domains verarbeitet`;
-
-    if (paused) {
-      statusColor = '#fbbf24';
-      iconHtml    = '<i class="fas fa-pause-circle"></i>';
-      statusMsg   = 'Backlink-Worker PAUSIERT — ' + done.toLocaleString('de-DE') + ' done, ' + pending.toLocaleString('de-DE') + ' pending' + dqPart;
-    } else if (pending > 0 || processing > 0) {
-      statusColor = '#18e888';
-      iconHtml    = '<i class="fas fa-spinner fa-spin"></i>';
-      statusMsg   = 'Verarbeite Backlinks — ' + processing.toLocaleString('de-DE') + ' aktiv, ' + pending.toLocaleString('de-DE') + ' ausstehend, ' + done.toLocaleString('de-DE') + ' fertig' + dqPart;
-    } else if (done > 0) {
-      statusColor = dqQueued > 0 ? '#fbbf24' : '#00c8ff';
-      iconHtml    = dqQueued > 0 ? '<i class="fas fa-hourglass-half"></i>' : '<i class="fas fa-check-double"></i>';
-      statusMsg   = 'Backlink-Queue leer (' + done.toLocaleString('de-DE') + ' done)' + dqPart;
-    } else {
-      statusColor = '#fbbf24';
-      iconHtml    = '<i class="fas fa-exclamation-circle"></i>';
-      statusMsg   = 'Queue leer. Klicke "SERP Check Now" um die Queue zu befüllen.';
+    if (icon) {
+      icon.innerHTML  = anyRunning
+        ? '<i class="fas fa-spinner fa-spin"></i>'
+        : allPaused ? '<i class="fas fa-pause-circle"></i>' : '<i class="fas fa-check-circle"></i>';
+      icon.style.color = barColor;
     }
-
-    if (icon) { icon.innerHTML = iconHtml; icon.style.color = statusColor; }
-    if (text)  text.textContent = statusMsg;
-    if (bar)   bar.style.borderColor = statusColor + '66';
+    if (text) text.innerHTML = serp2 + serp3 + serp4;
+    if (bar)  bar.style.borderColor = barColor + '66';
 
     const serpBtn = document.getElementById('cbTriggerSerpBtn');
     if (serpBtn) serpBtn.disabled = Boolean(d.serp_running);
@@ -620,8 +753,64 @@ async function triggerSerpCheck() {
   }
 }
 
+// ── ZAP 2 worker trigger ──────────────────────────────────────────────────────
+
+async function triggerZap2Worker() {
+  const btn = document.getElementById('cbRunZap2Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running ZAP 2…'; }
+  try {
+    const res = await fetch('api/zap2_serp_worker.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'run_batch', batch: 5 }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      const msg = `ZAP 2: ${d.processed} Keywords, ${d.total_new_backlinks || 0} neue Backlinks, ${d.total_queue_entries || 0} Queue-Einträge.`;
+      showToast(msg, 'success');
+    } else {
+      showToast(d.error || 'ZAP 2 fehlgeschlagen', 'error');
+    }
+  } catch (e) {
+    showToast('ZAP 2 Fehler: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> ZAP 2: SERP Check'; }
+    setTimeout(() => { loadPipelineStatus(); loadCompetitorBacklinkQueue(); }, 2000);
+  }
+}
+
+// ── ZAP 4 worker trigger ──────────────────────────────────────────────────────
+
+async function triggerZap4Worker() {
+  const btn = document.getElementById('cbRunZap4Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enriching…'; }
+  try {
+    const res = await fetch('api/zap4_email_worker.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'run_batch', batch: 5 }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      const msg = `ZAP 4: ${d.processed} Domains, ${d.found_email || 0} E-Mails gefunden.`;
+      showToast(msg, 'success');
+    } else {
+      showToast(d.error || 'ZAP 4 fehlgeschlagen', 'error');
+    }
+  } catch (e) {
+    showToast('ZAP 4 Fehler: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-at"></i> ZAP 4: Enrich Emails'; }
+    setTimeout(() => { loadPipelineStatus(); loadCompetitorBacklinkQueue(); }, 2000);
+  }
+}
+
 async function triggerResetQueue() {
-  if (!confirm('Reset all completed items back to pending?\nThe backlink worker will reprocess all ' + document.getElementById('cbStatusText')?.textContent?.match(/\d[\.\d]*/)?.[0] + ' domains.')) return;
+  if (!confirm(
+    'Achtung: Setzt die gesamte Backlink-Queue (ZAP 3) zurück auf pending.\n' +
+    'Der Backlink-Worker verarbeitet alle Einträge erneut.\n\n' +
+    'Nur ausführen wenn du ZAP 3 komplett neu starten möchtest!'
+  )) return;
   const btn = document.getElementById('cbResetQueueBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting…'; }
   try {
@@ -631,12 +820,12 @@ async function triggerResetQueue() {
       body: JSON.stringify({ action: 'reset_queue' }),
     });
     const d = await res.json();
-    showToast(d.success ? (d.message || 'Queue reset') : (d.error || 'Failed'), d.success ? 'success' : 'error');
+    showToast(d.success ? (d.message || 'Queue zurückgesetzt') : (d.error || 'Failed'), d.success ? 'success' : 'error');
     if (d.success) loadCompetitorBacklinkQueue();
   } catch (e) {
     showToast('Request failed: ' + e.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo"></i> Reset Queue'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo"></i> Reset Backlink-Queue'; }
     setTimeout(loadPipelineStatus, 1500);
   }
 }
@@ -770,23 +959,3 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-async function triggerDispatchDomains() {
-  const btn = document.getElementById('cbDispatchDomainsBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Dispatching…'; }
-  // Reset auto-dispatch cooldown so the next auto-advance doesn't wait unnecessarily.
-  autoDispatchLastAt = Date.now();
-  try {
-    const res = await fetch(zapTriggerApi, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'dispatch_queued_domains', batch: DISPATCH_BATCH_SIZE }),
-    });
-    const d = await res.json();
-    showToast(d.success ? (d.message || `${DISPATCH_BATCH_SIZE} Domains dispatched`) : (d.error || 'Failed'), d.success ? 'success' : 'error');
-  } catch(e) {
-    showToast('Request failed: ' + e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Dispatch Domains'; }
-    setTimeout(loadPipelineStatus, 2000);
-  }
-}
