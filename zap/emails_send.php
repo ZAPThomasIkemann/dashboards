@@ -119,7 +119,7 @@
                 <!-- ── SMTP Config ── -->
                 <div class="smtp-card">
                     <div class="smtp-header" id="smtpToggle">
-                        <h3><i class="fas fa-cog"></i> SMTP Configuration</h3>
+                        <h3><i class="fas fa-cog"></i> SMTP Configuration &amp; Rate Limits</h3>
                         <span id="smtpStatus">Not configured</span>
                         <i class="fas fa-chevron-down" id="smtpToggleIcon" style="color:var(--zap-text-muted);margin-left:8px;"></i>
                     </div>
@@ -150,21 +150,51 @@
                                     <label for="smtpFromEmail">From E-Mail</label>
                                     <input type="email" id="smtpFromEmail" class="search-input" placeholder="outreach@zap-hosting.com">
                                 </div>
+                                <div class="smtp-field">
+                                    <label for="smtpMaxHour">Max E-Mails / Stunde</label>
+                                    <input type="number" id="smtpMaxHour" class="search-input" value="10" min="1" max="500" title="Maximale Anzahl E-Mails pro rollendem 60-Minuten-Fenster">
+                                </div>
+                                <div class="smtp-field">
+                                    <label for="smtpMaxDay">Max E-Mails / Tag</label>
+                                    <input type="number" id="smtpMaxDay" class="search-input" value="50" min="1" max="2000" title="Maximale Anzahl E-Mails pro Kalendertag (Europe/Berlin)">
+                                </div>
                             </div>
                             <div class="smtp-row-2">
                                 <div class="smtp-field">
-                                    <label for="smtpSubject">E-Mail Subject</label>
-                                    <input type="text" id="smtpSubject" class="search-input" placeholder="Link opportunity — {domain}">
+                                    <label for="smtpSubject">E-Mail Subject <small style="font-weight:400;color:var(--zap-text-muted)">(Variablen: {{domain}}, {{keyword}}, {{competitor}}, {{backlink_url}}, {{from_name}})</small></label>
+                                    <input type="text" id="smtpSubject" class="search-input" placeholder="Linkpartnerschaft — {{domain}}">
                                 </div>
                                 <div class="smtp-field">
-                                    <label for="smtpTemplate">E-Mail Template <small style="font-weight:400;color:var(--zap-text-muted)">(placeholders: {domain}, {keyword}, {url})</small></label>
-                                    <textarea id="smtpTemplate" class="search-input" rows="6" placeholder="Hi,&#10;&#10;I noticed your article on {domain} mentions similar products to ours..."></textarea>
+                                    <label for="smtpTemplate">E-Mail Template (HTML) <small style="font-weight:400;color:var(--zap-text-muted)">Gleiche Variablen wie Subject</small></label>
+                                    <textarea id="smtpTemplate" class="search-input" rows="8" placeholder="Hallo,&#10;&#10;ich bin auf {{domain}} gestoßen und fand euren Artikel sehr interessant...&#10;&#10;Liebe Grüße,&#10;{{from_name}}"></textarea>
                                 </div>
                             </div>
-                            <div style="margin-top:14px">
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save SMTP Settings</button>
+                            <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Einstellungen speichern</button>
+                                <span id="smtpRateStatus" style="font-size:.82rem;color:var(--zap-text-muted);"></span>
                             </div>
                         </form>
+                    </div>
+                </div>
+
+                <!-- ── Send Controls ── -->
+                <div class="card" style="padding:18px 20px;">
+                    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+                        <div>
+                            <h3 style="margin:0 0 4px;font-size:.95rem;"><i class="fas fa-paper-plane" style="color:var(--zap-green);margin-right:6px;"></i> E-Mail Versand</h3>
+                            <div style="font-size:.82rem;color:var(--zap-text-muted);">
+                                Heute: <strong id="sendStatDay">—</strong> gesendet ·
+                                Letzte Stunde: <strong id="sendStatHour">—</strong> ·
+                                Limit: <strong id="sendStatLimit">—/h · —/d</strong>
+                            </div>
+                        </div>
+                        <div style="flex:1"></div>
+                        <button class="btn btn-primary" id="sendBatchBtn" onclick="triggerSendBatch()">
+                            <i class="fas fa-paper-plane"></i> Batch senden (max. Limit)
+                        </button>
+                        <span style="font-size:.8rem;color:var(--zap-text-muted);">
+                            Sendet bis zum Stunden- und Tageslimit. Reihenfolge: höchster Domain-Rank zuerst.
+                        </span>
                     </div>
                 </div>
 

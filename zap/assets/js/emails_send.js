@@ -285,25 +285,45 @@ async function loadSmtpConfig() {
     set('smtpFromEmail', c.from_email);
     set('smtpSubject',   c.email_subject);
     set('smtpTemplate',  c.email_template);
-    document.getElementById('smtpStatus')?.classList.remove('hidden');
-    document.getElementById('smtpStatus').textContent = c.smtp_host ? `✓ Configured: ${c.smtp_host}:${c.smtp_port}` : 'Not configured';
+    set('smtpMaxHour',   c.max_per_hour || 10);
+    set('smtpMaxDay',    c.max_per_day  || 50);
+    const st = document.getElementById('smtpStatus');
+    if (st) st.textContent = c.smtp_host ? `✓ ${c.smtp_host}:${c.smtp_port}` : 'Not configured';
+  } catch {}
+  loadSendStatus();
+}
+
+// ── Load send rate-limit status ───────────────────────────────────────────────
+async function loadSendStatus() {
+  try {
+    const res  = await fetch('api/emails_send.php?mode=send_status', { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.success) return;
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    s('sendStatDay',   data.sent_today     + ' / ' + data.max_per_day);
+    s('sendStatHour',  data.sent_last_hour + ' / ' + data.max_per_hour);
+    s('sendStatLimit', data.max_per_hour   + '/h · ' + data.max_per_day + '/d');
+    const rateSt = document.getElementById('smtpRateStatus');
+    if (rateSt) rateSt.textContent = `Heute: ${data.sent_today}/${data.max_per_day} · Letzte Stunde: ${data.sent_last_hour}/${data.max_per_hour}`;
   } catch {}
 }
 
-// ── Save SMTP Config ─────────────────────────────────────────────────────────
+// ── Save SMTP Config (with rate limits) ──────────────────────────────────────
 async function saveSmtpConfig(e) {
   e.preventDefault();
   const getVal = (id) => (document.getElementById(id)?.value || '');
   const payload = {
-    mode: 'smtp_config',
-    smtp_host: getVal('smtpHost'),
-    smtp_port: parseInt(getVal('smtpPort') || '587'),
-    smtp_user: getVal('smtpUser'),
-    smtp_pass: getVal('smtpPass'),
-    from_name:  getVal('smtpFromName'),
-    from_email: getVal('smtpFromEmail'),
+    mode: 'smtp_config_full',
+    smtp_host:      getVal('smtpHost'),
+    smtp_port:      parseInt(getVal('smtpPort') || '587'),
+    smtp_user:      getVal('smtpUser'),
+    smtp_pass:      getVal('smtpPass'),
+    from_name:      getVal('smtpFromName'),
+    from_email:     getVal('smtpFromEmail'),
     email_subject:  getVal('smtpSubject'),
     email_template: getVal('smtpTemplate'),
+    max_per_hour:   parseInt(getVal('smtpMaxHour') || '10'),
+    max_per_day:    parseInt(getVal('smtpMaxDay')  || '50'),
   };
   try {
     const res  = await fetch('api/emails_send.php', {
@@ -313,14 +333,41 @@ async function saveSmtpConfig(e) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('SMTP settings saved', 'success');
+      showToast('Einstellungen gespeichert', 'success');
       const st = document.getElementById('smtpStatus');
-      if (st) st.textContent = `✓ Configured: ${payload.smtp_host}:${payload.smtp_port}`;
+      if (st) st.textContent = `✓ ${payload.smtp_host}:${payload.smtp_port}`;
+      loadSendStatus();
     } else {
-      showToast('Save failed: ' + (data.error || 'unknown'), 'error');
+      showToast('Speichern fehlgeschlagen: ' + (data.error || 'unknown'), 'error');
     }
   } catch (err) {
-    showToast('Save failed: ' + err.message, 'error');
+    showToast('Fehler: ' + err.message, 'error');
+  }
+}
+
+// ── Trigger batch send ────────────────────────────────────────────────────────
+async function triggerSendBatch() {
+  const btn = document.getElementById('sendBatchBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sende…'; }
+  try {
+    const res = await fetch('api/zap5_email_sender.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'send_batch', batch: 50 }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast(`${d.sent} E-Mail(s) gesendet, ${d.failed || 0} fehlgeschlagen.`, d.sent > 0 ? 'success' : 'success');
+    } else {
+      showToast(d.error || 'Batch-Versand fehlgeschlagen', 'error');
+    }
+    loadStats();
+    loadSendStatus();
+    refreshAllColumns();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Batch senden (max. Limit)'; }
   }
 }
 

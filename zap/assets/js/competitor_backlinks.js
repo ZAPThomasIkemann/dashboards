@@ -753,6 +753,58 @@ async function triggerSerpCheck() {
   }
 }
 
+// ── ZAP 2 worker trigger ──────────────────────────────────────────────────────
+
+async function triggerZap2Worker() {
+  const btn = document.getElementById('cbRunZap2Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running ZAP 2…'; }
+  try {
+    const res = await fetch('api/zap2_serp_worker.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'run_batch', batch: 5 }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      const msg = `ZAP 2: ${d.processed} Keywords, ${d.total_new_backlinks || 0} neue Backlinks, ${d.total_queue_entries || 0} Queue-Einträge.`;
+      showToast(msg, 'success');
+    } else {
+      showToast(d.error || 'ZAP 2 fehlgeschlagen', 'error');
+    }
+  } catch (e) {
+    showToast('ZAP 2 Fehler: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> ZAP 2: SERP Check'; }
+    setTimeout(() => { loadPipelineStatus(); loadCompetitorBacklinkQueue(); }, 2000);
+  }
+}
+
+// ── ZAP 4 worker trigger ──────────────────────────────────────────────────────
+
+async function triggerZap4Worker() {
+  const btn = document.getElementById('cbRunZap4Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enriching…'; }
+  try {
+    const res = await fetch('api/zap4_email_worker.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'run_batch', batch: 5 }),
+    });
+    const d = await res.json();
+    if (d.success) {
+      const msg = `ZAP 4: ${d.processed} Domains, ${d.found_email || 0} E-Mails gefunden.`;
+      showToast(msg, 'success');
+    } else {
+      showToast(d.error || 'ZAP 4 fehlgeschlagen', 'error');
+    }
+  } catch (e) {
+    showToast('ZAP 4 Fehler: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-at"></i> ZAP 4: Enrich Emails'; }
+    setTimeout(() => { loadPipelineStatus(); loadCompetitorBacklinkQueue(); }, 2000);
+  }
+}
+
 async function triggerResetQueue() {
   if (!confirm(
     'Achtung: Setzt die gesamte Backlink-Queue (ZAP 3) zurück auf pending.\n' +

@@ -57,6 +57,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518g"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518h"></script>
 </body>
 </html>

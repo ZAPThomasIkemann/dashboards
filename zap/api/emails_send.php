@@ -217,7 +217,7 @@ if ($mode === 'send_log') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUEUE SEND — mark items for sending by email_sender.py
+// QUEUE SEND — mark items for sending (queued_to_send → picked up by ZAP 5)
 // ─────────────────────────────────────────────────────────────────────────────
 if ($mode === 'queue_send' && $method === 'POST') {
     $body = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -227,14 +227,14 @@ if ($mode === 'queue_send' && $method === 'POST') {
 
     $config = $pdo->query("SELECT * FROM email_smtp_config LIMIT 1")->fetch(PDO::FETCH_ASSOC);
     if (!$config || !$config['smtp_host']) {
-        echo json_encode(['success' => false, 'error' => 'SMTP not configured']); exit;
+        echo json_encode(['success' => false, 'error' => 'SMTP not configured. Configure SMTP first.']); exit;
     }
 
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $prospects = $pdo->prepare("SELECT id, email, competitor_domain FROM competitor_backlink_prospects WHERE id IN ($placeholders) AND email IS NOT NULL AND email != ''")->execute($ids) ? $pdo->prepare("SELECT id, email, competitor_domain FROM competitor_backlink_prospects WHERE id IN ($placeholders) AND email IS NOT NULL AND email != ''"): null;
-
-    // Simple approach: just mark as outreach_status='sent' for now; Python worker does the actual sending
-    $stmt = $pdo->prepare("UPDATE competitor_backlink_prospects SET outreach_status = 'queued_to_send' WHERE id = ? AND (outreach_status IS NULL OR outreach_status = 'to_send')");
+    $stmt = $pdo->prepare("
+        UPDATE competitor_backlink_prospects
+        SET outreach_status = 'queued_to_send'
+        WHERE id = ? AND (outreach_status IS NULL OR outreach_status = 'to_send')
+    ");
     $queued = 0;
     foreach ($ids as $id) {
         $stmt->execute([$id]);
@@ -245,4 +245,116 @@ if ($mode === 'queue_send' && $method === 'POST') {
     exit;
 }
 
-echo json_encode(['success' => false, 'error' => 'Unknown mode: ' . $mode]);
+// ─────────────────────────────────────────────────────────────────────────────
+// SEND NOW — immediately send a single email via PHP SMTP (calls ZAP 5 worker)
+// ─────────────────────────────────────────────────────────────────────────────
+if ($mode === 'send_now' && $method === 'POST') {
+    require_once '../includes/smtp_mailer.php';
+    // Re-use zap5_email_sender logic inline
+    $body       = json_decode(file_get_contents('php://input'), true) ?? [];
+    $prospectId = (int) ($body['prospect_id'] ?? 0);
+    if (!$prospectId) { echo json_encode(['success' => false, 'error' => 'Missing prospect_id']); exit; }
+
+    $config = $pdo->query("SELECT * FROM email_smtp_config LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    if (!$config || !$config['smtp_host']) {
+        echo json_encode(['success' => false, 'error' => 'SMTP not configured']); exit;
+    }
+
+    // Delegate to zap5_email_sender.php via internal include
+    ob_start();
+    $_POST['mode'] = 'send_one';
+    $_POST['prospect_id'] = $prospectId;
+    include __DIR__ . '/zap5_email_sender.php';
+    $out = ob_get_clean();
+    echo $out;
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMTP CONFIG — SAVE (with rate limit fields)
+// ─────────────────────────────────────────────────────────────────────────────
+if ($mode === 'smtp_config_full' && $method === 'POST') {
+    $body       = json_decode(file_get_contents('php://input'), true) ?? [];
+    $maxPerHour = max(1, min(500, (int) ($body['max_per_hour'] ?? 10)));
+    $maxPerDay  = max(1, min(2000, (int) ($body['max_per_day'] ?? 50)));
+
+    // Ensure columns exist
+    try { $pdo->exec("ALTER TABLE email_smtp_config ADD COLUMN max_per_hour INT NOT NULL DEFAULT 10"); } catch (Throwable $e) {}
+    try { $pdo->exec("ALTER TABLE email_smtp_config ADD COLUMN max_per_day  INT NOT NULL DEFAULT 50"); } catch (Throwable $e) {}
+
+    $existing = $pdo->query("SELECT id, smtp_pass FROM email_smtp_config LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $pass     = trim((string) ($body['smtp_pass'] ?? ''));
+    $actualPass = ($pass === '••••••••' && $existing) ? $existing['smtp_pass'] : $pass;
+
+    if ($existing) {
+        $pdo->prepare("
+            UPDATE email_smtp_config
+            SET smtp_host=?,smtp_port=?,smtp_user=?,smtp_pass=?,from_name=?,from_email=?,
+                email_subject=?,email_template=?,max_per_hour=?,max_per_day=?
+            WHERE id=?
+        ")->execute([
+            trim($body['smtp_host'] ?? ''),
+            max(1, min(65535, (int) ($body['smtp_port'] ?? 587))),
+            trim($body['smtp_user'] ?? ''),
+            $actualPass,
+            trim($body['from_name'] ?? ''),
+            trim($body['from_email'] ?? ''),
+            trim($body['email_subject'] ?? ''),
+            trim($body['email_template'] ?? ''),
+            $maxPerHour, $maxPerDay,
+            $existing['id'],
+        ]);
+    } else {
+        $pdo->prepare("
+            INSERT INTO email_smtp_config
+                (smtp_host,smtp_port,smtp_user,smtp_pass,from_name,from_email,email_subject,email_template,max_per_hour,max_per_day)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        ")->execute([
+            trim($body['smtp_host'] ?? ''),
+            max(1, min(65535, (int) ($body['smtp_port'] ?? 587))),
+            trim($body['smtp_user'] ?? ''),
+            $actualPass,
+            trim($body['from_name'] ?? ''),
+            trim($body['from_email'] ?? ''),
+            trim($body['email_subject'] ?? ''),
+            trim($body['email_template'] ?? ''),
+            $maxPerHour, $maxPerDay,
+        ]);
+    }
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEND STATUS — current rate-limit counters
+// ─────────────────────────────────────────────────────────────────────────────
+if ($mode === 'send_status') {
+    try {
+        $sentHour = (int) $pdo->query("
+            SELECT COUNT(*) FROM backlink_email_sends
+            WHERE status='sent' AND sent_at >= UTC_TIMESTAMP() - INTERVAL 1 HOUR
+        ")->fetchColumn();
+    } catch (Throwable $e) { $sentHour = 0; }
+
+    $berlin = new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin'));
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM backlink_email_sends
+            WHERE status='sent' AND DATE(CONVERT_TZ(sent_at,'+00:00','+02:00')) = ?
+        ");
+        $stmt->execute([$berlin->format('Y-m-d')]);
+        $sentDay = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) { $sentDay = 0; }
+
+    $cfg = $pdo->query("SELECT max_per_hour, max_per_day FROM email_smtp_config LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: [];
+    echo json_encode([
+        'success'        => true,
+        'sent_last_hour' => $sentHour,
+        'sent_today'     => $sentDay,
+        'max_per_hour'   => (int) ($cfg['max_per_hour'] ?? 10),
+        'max_per_day'    => (int) ($cfg['max_per_day']  ?? 50),
+    ]);
+    exit;
+}
+
+echo json_encode(['success' => false, 'error' => 'Unknown mode: ' . htmlspecialchars($mode)]);

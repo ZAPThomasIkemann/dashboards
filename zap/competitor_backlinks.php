@@ -102,10 +102,16 @@
                         <span class="ps-icon" id="cbStatusIcon"><i class="fas fa-circle-notch fa-spin"></i></span>
                         <span class="ps-text" id="cbStatusText">Lade Pipeline-Status…</span>
                         <div class="ps-actions">
-                            <button class="pipeline-trigger-btn" id="cbTriggerSerpBtn" onclick="triggerSerpCheck()" title="Startet den SERP-Check sofort (ZAP 2) — füllt die Backlink-Queue für ZAP 3">
-                                <i class="fas fa-sync-alt"></i> SERP Check Now
+                            <button class="pipeline-trigger-btn" id="cbRunZap2Btn" onclick="triggerZap2Worker()" title="ZAP 2: SERP-Check für alle Keywords mit Position > 10. Findet Competitor-Backlinks und befüllt die Enrichment-Queue.">
+                                <i class="fas fa-search"></i> ZAP 2: SERP Check
                             </button>
-                            <button class="pipeline-trigger-btn is-danger" id="cbFixStuckBtn" onclick="triggerFixStuckDomains()" title="Setzt Domains mit veraltetem 'batch_claimed'-Status zurück in die Queue — der Python-Poller verarbeitet sie beim nächsten Zyklus" style="display:none;">
+                            <button class="pipeline-trigger-btn" id="cbRunZap4Btn" onclick="triggerZap4Worker()" title="ZAP 4: E-Mail-Enrichment für queued Domains (5 Stück). Besucht Homepage, Impressum, Kontakt und extrahiert E-Mails.">
+                                <i class="fas fa-at"></i> ZAP 4: Enrich Emails
+                            </button>
+                            <button class="pipeline-trigger-btn" id="cbTriggerSerpBtn" onclick="triggerSerpCheck()" title="Startet den täglichen SERP-Daemon sofort (füllt competitor_backlink_queue mit neuen Keywords)">
+                                <i class="fas fa-sync-alt"></i> SERP Daemon Now
+                            </button>
+                            <button class="pipeline-trigger-btn is-danger" id="cbFixStuckBtn" onclick="triggerFixStuckDomains()" title="Setzt Domains mit veraltetem 'batch_claimed'-Status zurück in die Queue" style="display:none;">
                                 <i class="fas fa-wrench"></i> Fix Stuck Domains (<span id="cbStuckCount">0</span>)
                             </button>
                             <button class="pipeline-trigger-btn is-danger" id="cbResetQueueBtn" onclick="triggerResetQueue()" title="Setzt die komplette ZAP-3-Backlink-Queue zurück auf pending — nur bei komplettem Neustart verwenden">
@@ -298,6 +304,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518g"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518h"></script>
 </body>
 </html>
