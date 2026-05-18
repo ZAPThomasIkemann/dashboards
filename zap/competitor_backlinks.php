@@ -108,10 +108,19 @@
                             <button class="pipeline-trigger-btn" id="cbDispatchDomainsBtn" onclick="triggerDispatchDomains()" title="Dispatches queued domains from the Domain Queue to the email enrichment worker">
                                 <i class="fas fa-paper-plane"></i> Dispatch Domains
                             </button>
+                            <button class="pipeline-trigger-btn is-danger" id="cbFixStuckBtn" onclick="triggerFixStuckDomains()" title="Resets domains stuck in 'batch_claimed' status back to queued so they can be re-enriched" style="display:none;">
+                                <i class="fas fa-wrench"></i> Fix Stuck Domains (<span id="cbStuckCount">0</span>)
+                            </button>
                             <button class="pipeline-trigger-btn is-danger" id="cbResetQueueBtn" onclick="triggerResetQueue()">
                                 <i class="fas fa-redo"></i> Reset Queue
                             </button>
                         </div>
+                    </div>
+                    <div id="cbStuckWarning" style="display:none; margin-top:10px; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,183,77,.4); background:rgba(255,183,77,.08); color:#ffe2a8; font-size:.84rem; line-height:1.6;">
+                        <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+                        <strong>Feststeckende Domains erkannt:</strong> <span id="cbStuckDetails"></span>
+                        Diese Domains haben seit über einer Stunde den Status <code>processing / batch_claimed</code> und werden von keinem Worker mehr verarbeitet.
+                        Klicke auf <strong>Fix Stuck Domains</strong>, um sie zurück in den Queue zu setzen.
                     </div>
                     <div class="control-grid" id="cbControlGrid">
                         <div class="step-empty">Loading controls...</div>
@@ -292,6 +301,6 @@
     </div>
 
     <script src="assets/js/main.js?v=20260507a"></script>
-    <script src="assets/js/competitor_backlinks.js?v=20260518e"></script>
+    <script src="assets/js/competitor_backlinks.js?v=20260518f"></script>
 </body>
 </html>

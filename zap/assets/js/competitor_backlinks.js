@@ -164,7 +164,65 @@ function renderCompetitorBacklinkQueue(payload) {
   if (!paused && processing === 0 && queued > 0) {
     maybeAutoDispatch();
   }
+
+  // Detect and surface stuck batch_claimed domains (n8n orphans)
+  checkForStuckRun(payload.active_run || null);
 }
+
+// Stuck-run detection: surfaces an orange warning + "Fix" button when the
+// active processing run has been sitting unfinished for more than 1 hour.
+// These are n8n batch_claimed orphans that no worker will ever complete.
+const STUCK_RUN_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+function checkForStuckRun(activeRun) {
+  const fixBtn  = document.getElementById('cbFixStuckBtn');
+  const warning = document.getElementById('cbStuckWarning');
+  const count   = document.getElementById('cbStuckCount');
+  const details = document.getElementById('cbStuckDetails');
+
+  if (!activeRun || !activeRun.started_at) {
+    if (fixBtn)  fixBtn.style.display  = 'none';
+    if (warning) warning.style.display = 'none';
+    return;
+  }
+
+  const startedAt = parseUtcLikeDate(activeRun.started_at);
+  const ageMs     = startedAt ? (Date.now() - startedAt.getTime()) : 0;
+  const stuckRows = Array.isArray(activeRun.rows) ? activeRun.rows : [];
+  const stuckCount = Number(activeRun.counts?.processing || stuckRows.length || 0);
+
+  if (ageMs < STUCK_RUN_THRESHOLD_MS || stuckCount === 0) {
+    if (fixBtn)  fixBtn.style.display  = 'none';
+    if (warning) warning.style.display = 'none';
+    return;
+  }
+
+  // Show the "Fix" button and warning banner
+  const ageHours = Math.round(ageMs / 3600000);
+  const domainList = stuckRows.map((r) => escapeHtml(r.domain_key || '')).join(', ');
+
+  if (count)   count.textContent = String(stuckCount);
+  if (fixBtn)  fixBtn.style.display  = '';
+  if (warning) warning.style.display = '';
+  if (details) {
+    details.textContent = stuckCount === 1
+      ? `${domainList || stuckCount + ' Domain(s)'} (seit ${ageHours} Std.) — `
+      : `${stuckCount} Domains (${domainList ? domainList.substring(0, 80) + (domainList.length > 80 ? '…' : '') : ''}) seit ${ageHours} Std. — `;
+  }
+
+  // Auto-reset if stuck for more than 24 hours — no user interaction needed
+  if (ageMs > 24 * 60 * 60 * 1000 && !autoResetDone) {
+    autoResetDone = true;
+    resetProcessingDomains('stuck_batches').then((result) => {
+      if (result && result.reset_count > 0) {
+        showToast(`Auto-Reset: ${result.reset_count} feststeckende Domain(s) zurückgesetzt.`, 'success');
+        loadCompetitorBacklinkQueue();
+      }
+    });
+  }
+}
+
+let autoResetDone = false;
 
 function renderProcessingStep(value) {
   const step = String(value || '').trim();
@@ -182,7 +240,25 @@ function renderProcessingStep(value) {
 function renderQueueSummary(summary) {
   const el = document.getElementById('cbQueueSummaryText');
   if (!el) return;
-  el.textContent = `${formatNumber(summary.total || 0)} domains total, ${formatNumber(summary.processing || 0)} processing, ${formatNumber(summary.queued || 0)} queued, ${formatNumber(summary.found_email || 0)} with email.`;
+
+  const parts = [
+    `${formatNumber(summary.total || 0)} domains total`,
+    `${formatNumber(summary.queued || 0)} queued`,
+  ];
+
+  // Actively-enriching counts from the Python DB poller
+  const activeNow = (summary.fetching_imprint || 0) + (summary.extracting || 0);
+  if (activeNow > 0) {
+    parts.push(`${formatNumber(activeNow)} enriching now`);
+  }
+
+  // Stuck n8n batch_claimed orphans
+  if (summary.processing > 0) {
+    parts.push(`${formatNumber(summary.processing)} stuck (batch_claimed)`);
+  }
+
+  parts.push(`${formatNumber(summary.found_email || 0)} with email`);
+  el.textContent = parts.join(', ') + '.';
 }
 
 function renderCompetitorBacklinkQueueRows(rows) {
@@ -215,7 +291,7 @@ function renderCompetitorBacklinkQueueRows(rows) {
 
   body.innerHTML = filteredRows.map((row) => `
     <tr>
-      <td class="queue-status-cell">${renderQueueStatus(row.status || row.email_status)}</td>
+      <td class="queue-status-cell">${renderQueueStatus(row.status || row.email_status, row.processing_step)}</td>
       <td>${escapeHtml(row.domain_key || row.referring_domain || '')}</td>
       <td><a class="step-link" href="${escapeAttr(row.domain_home_url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.domain_home_url || '')}</a></td>
       <td><a class="step-link" href="${escapeAttr(row.sample_referring_page_url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.sample_referring_page_url || '')}</a></td>
@@ -240,8 +316,10 @@ function syncCompetitorQueueButtons() {
   if (processingBtn) processingBtn.classList.toggle('is-selected', competitorQueueView === 'processing');
 }
 
-function renderQueueStatus(statusValue) {
+function renderQueueStatus(statusValue, processingStep) {
   const status = String(statusValue || '').trim().toLowerCase();
+  const step   = String(processingStep || '').trim().toLowerCase();
+
   if (status === 'approved_for_outreach') {
     return '<span class="step-badge ok">approved</span>';
   }
@@ -251,10 +329,24 @@ function renderQueueStatus(statusValue) {
   if (status === 'dispatching') {
     return '<span class="step-badge info">dispatching</span>';
   }
+  // Python DB-poller active statuses — domain is actively being enriched right now
+  if (status === 'fetching_imprint') {
+    return '<span class="step-badge info">fetching imprint</span>';
+  }
+  if (status === 'extracting') {
+    return '<span class="step-badge info">extracting email</span>';
+  }
   if (status === 'processing' || status === 'claimed' || status === 'running') {
+    // Distinguish between an active DB-poll claim and a stuck n8n batch_claimed orphan
+    if (step === 'batch_claimed') {
+      return '<span class="step-badge warn" title="Feststeckend seit über einer Stunde — klicke \'Fix Stuck Domains\'">⚠ stuck</span>';
+    }
+    if (step === 'db_poll') {
+      return '<span class="step-badge info">enriching</span>';
+    }
     return '<span class="step-badge info">processing</span>';
   }
-  if (status === 'found') {
+  if (status === 'found' || status === 'found_email') {
     return '<span class="step-badge ok">found</span>';
   }
   if (status === 'no_email') {
@@ -374,9 +466,9 @@ async function updateControl(controlKey, controlValue) {
       autoDispatchLastAt = 0;
       await silentDispatch();
     } else if (controlValue === '1') {
-      // Pause: reset any domains that are stuck in 'processing' or 'dispatching'
-      // so they re-enter the queue and are not lost.
-      await resetProcessingDomains();
+      // Pause: reset only n8n batch_claimed orphans back to queued.
+      // The Python DB-poller domains transition quickly and need no reset.
+      await resetProcessingDomains('stuck_batches');
     }
   }
 
@@ -384,18 +476,51 @@ async function updateControl(controlKey, controlValue) {
 }
 
 // Reset domains stuck in 'processing' / 'dispatching' back to queued state.
-async function resetProcessingDomains() {
+// mode: 'stuck_batches' (default, safe — only n8n batch_claimed orphans > 1h)
+//       'all_processing' (aggressive — all processing rows > 1h)
+async function resetProcessingDomains(mode = 'stuck_batches') {
   try {
     const res = await fetch('api/reset_domain_processing.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
     });
     const d = await res.json();
     if (d.success && d.reset_count > 0) {
       showToast(d.message || `${d.reset_count} Domain(s) zurückgesetzt.`, 'success');
     }
+    return d;
   } catch (e) {
-    // Non-critical: don't block the pause action
+    // Non-critical: don't block the calling action
+    return null;
+  }
+}
+
+// Called by the "Fix Stuck Domains" button in the UI
+async function triggerFixStuckDomains() {
+  const btn = document.getElementById('cbFixStuckBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting…'; }
+  try {
+    const result = await resetProcessingDomains('stuck_batches');
+    if (result && result.success) {
+      showToast(result.message || 'Feststeckende Domains zurückgesetzt.', 'success');
+      // Hide warning and button after successful reset
+      const warning = document.getElementById('cbStuckWarning');
+      if (warning) warning.style.display = 'none';
+      if (btn)     btn.style.display     = 'none';
+      autoResetDone = false; // allow future auto-resets if needed
+      await loadCompetitorBacklinkQueue();
+    } else {
+      showToast(result?.message || 'Keine feststeckenden Domains gefunden.', 'success');
+    }
+  } catch (e) {
+    showToast('Reset fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      const stuckCount = document.getElementById('cbStuckCount')?.textContent || '0';
+      btn.innerHTML = `<i class="fas fa-wrench"></i> Fix Stuck Domains (${stuckCount})`;
+    }
   }
 }
 
@@ -455,7 +580,7 @@ function renderIgnoredDomains(rows) {
 
   body.innerHTML = rows.map((row) => `
     <tr>
-      <td>${renderQueueStatus(row.status)}</td>
+      <td>${renderQueueStatus(row.status, row.processing_step)}</td>
       <td>${escapeHtml(row.domain_key || '')}</td>
       <td>${escapeHtml(row.ignored_reason || '-')}</td>
       <td>${escapeHtml(formatNumber(row.domain_rank_max, 0))}</td>
