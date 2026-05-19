@@ -11,6 +11,7 @@ ignore_user_abort(true);
 foreach ([__DIR__ . '/../config.php', __DIR__ . '/../../zap/config.php'] as $cp) {
     if (is_file($cp)) { require_once $cp; break; }
 }
+require_once __DIR__ . '/ai.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -68,25 +69,6 @@ if (function_exists('fastcgi_finish_request')) {
 // AB HIER: HINTERGRUNDVERARBEITUNG
 // ================================================================
 
-function wr_openai(string $model, array $messages, array $opts = []): string {
-    if (!defined('OPENAI_API_KEY') || OPENAI_API_KEY === '') return '';
-    $payload = array_merge(['model' => $model, 'messages' => $messages], $opts);
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 300,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . OPENAI_API_KEY,
-        ],
-    ]);
-    $resp    = curl_exec($ch);
-    $decoded = json_decode($resp ?: '', true);
-    curl_close($ch);
-    return (string) ($decoded['choices'][0]['message']['content'] ?? '');
-}
 
 function wr_extract_tag(string $source, string $tag): string {
     preg_match_all('/<' . preg_quote($tag, '/') . '>([\s\S]*?)<\/' . preg_quote($tag, '/') . '>/i', $source, $m);
@@ -185,10 +167,10 @@ PROMPT;
     wr_progress($dashboardApiUrl, $threadId, 'revision', 'KI ueberarbeitet Content...', 25);
 
     // 4. OpenAI GPT-5.5 aufrufen (medium reasoning)
-    $rawOutput = wr_openai('gpt-5.5', [
+    $rawOutput = ai_chat([
         ['role' => 'system', 'content' => 'Du bist der Revisions-Agent fuer das DMC Dashboard. Setze Mitarbeiter-Feedback praezise um und liefere deine Antwort ausschliesslich im geforderten Tag-Format.'],
         ['role' => 'user',   'content' => $revPrompt],
-    ], ['reasoning_effort' => 'medium']);
+    ], 'strong');
 
     // 5. Tags extrahieren
     $revisionBody = wr_extract_tag($rawOutput, 'revision_markdown') ?: $rawOutput;

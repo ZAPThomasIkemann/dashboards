@@ -2,9 +2,24 @@
 // ================================================================
 // DMC Dashboard – Konfiguration
 // Eigenständige Config ohne Abhängigkeit vom ZAP-Verzeichnis.
+// API-Keys und AI-Provider-Einstellungen kommen aus secrets.php (gitignored).
 // ================================================================
 
-define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: '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');
+// Secrets laden (gitignored, nie im Repository)
+$_secretsFile = __DIR__ . '/../secrets.php';
+if (is_file($_secretsFile)) {
+    require_once $_secretsFile;
+}
+unset($_secretsFile);
+
+// Fallback auf Umgebungsvariablen wenn secrets.php fehlt (z. B. CI/CD)
+if (!defined('OPENAI_API_KEY'))      define('OPENAI_API_KEY',      getenv('OPENAI_API_KEY')      ?: '');
+if (!defined('ANTHROPIC_API_KEY'))   define('ANTHROPIC_API_KEY',   getenv('ANTHROPIC_API_KEY')   ?: '');
+if (!defined('AI_PROVIDER'))         define('AI_PROVIDER',         getenv('AI_PROVIDER')         ?: 'openai');
+if (!defined('OPENAI_MODEL_FAST'))   define('OPENAI_MODEL_FAST',   'gpt-4.1-mini');
+if (!defined('OPENAI_MODEL_STRONG')) define('OPENAI_MODEL_STRONG', 'gpt-5.5');
+if (!defined('ANTHROPIC_MODEL_FAST'))   define('ANTHROPIC_MODEL_FAST',   'claude-3-5-haiku-20241022');
+if (!defined('ANTHROPIC_MODEL_STRONG')) define('ANTHROPIC_MODEL_STRONG', 'claude-opus-4-5');
 
 define('DB_HOST', 'localhost');
 define('DB_USER', 'zapdash');

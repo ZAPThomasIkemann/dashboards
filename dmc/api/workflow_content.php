@@ -11,6 +11,7 @@ ignore_user_abort(true);
 foreach ([__DIR__ . '/../config.php', __DIR__ . '/../../zap/config.php'] as $cp) {
     if (is_file($cp)) { require_once $cp; break; }
 }
+require_once __DIR__ . '/ai.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -98,25 +99,6 @@ function wc_dashboard_update(string $url, int $tid, string $status, string $labe
     curl_close($ch);
 }
 
-function wc_openai(string $model, array $messages, array $opts = []): string {
-    if (!defined('OPENAI_API_KEY') || OPENAI_API_KEY === '') return '';
-    $payload = array_merge(['model' => $model, 'messages' => $messages], $opts);
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 300,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . OPENAI_API_KEY,
-        ],
-    ]);
-    $resp    = curl_exec($ch);
-    $decoded = json_decode($resp ?: '', true);
-    curl_close($ch);
-    return (string) ($decoded['choices'][0]['message']['content'] ?? '');
-}
 
 function wc_dataforseo(string $endpoint, array $payload): array {
     if (!defined('DFS_LOGIN') || !defined('DFS_PASSWORD')) return [];
@@ -477,9 +459,9 @@ Pflichtfelder:
 - "content_angle": String
 PROMPT;
 
-    $kwRaw = wc_openai('gpt-4.1-mini', [
+    $kwRaw = ai_chat([
         ['role' => 'user', 'content' => $kwPrompt],
-    ]);
+    ], 'fast');
 
     // 3. Keywords parsen
     $kwJson = preg_replace('/^```(?:json)?\s*/i', '', trim($kwRaw));
@@ -569,10 +551,10 @@ PROMPT;
 
     $contentUserPrompt = "Du bist der Content- und SEO-Agent fuer europamaut.com.\n\nVerbindlicher Systemkontext:\n{$effectiveSP}\n\nAufgabe: Erstelle auf Basis des Themas, der Zielgruppe, des User-Prompts und der DataForSEO-Recherche einen SEO-optimierten Beitrag fuer europamaut.com in sauberem Markdown.{$contentTypeHint}\n\nThema: {$topic}\nFormular-Titel: {$formTitle}\nErkanntes Land: {$detectedCountry}\nZielgruppe: {$targetAudience}\nSprache: {$language}\nStandort: {$location}\nUser-Prompt: {$prompt}\n\nDer Inhalt muss enthalten:\n1. SEO-Titel\n2. Meta-Description\n3. H1\n4. Einleitung\n5. Hauptteil mit mehreren H2/H3-Abschnitten\n6. FAQ\n7. Fazit\n\nWichtige Regeln:\n- Schreibe vollstaendig in {$language}.\n- Nutze die recherchierten Keywords sinnvoll und natuerlich.\n- Beantworte die wichtigsten Nutzerfragen direkt und konkret.\n- Gib nur den finalen Markdown-Inhalt zurueck, ohne Vorbemerkung.\n\nDatenbasis:\n```json\n{$researchJson}\n```";
 
-    $generatedContent = wc_openai('gpt-5.5', [
+    $generatedContent = ai_chat([
         ['role' => 'system', 'content' => 'Du bist der Content- und SEO-Agent fuer europamaut.com. Liefere nur den finalen Markdown-Inhalt ohne Vorbemerkung.'],
         ['role' => 'user',   'content' => $contentUserPrompt],
-    ]);
+    ], 'strong');
 
     // 10. Recherche-Sektion aufbauen
     $fmt = static function ($v): string {

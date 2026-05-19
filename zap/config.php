@@ -1,5 +1,15 @@
 <?php
-define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: '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');
+// Secrets laden (gitignored, nie im Repository)
+$_secretsFile = __DIR__ . '/../secrets.php';
+if (is_file($_secretsFile)) {
+    require_once $_secretsFile;
+}
+unset($_secretsFile);
+
+if (!defined('OPENAI_API_KEY'))    define('OPENAI_API_KEY',    getenv('OPENAI_API_KEY')    ?: '');
+if (!defined('ANTHROPIC_API_KEY')) define('ANTHROPIC_API_KEY', getenv('ANTHROPIC_API_KEY') ?: '');
+if (!defined('AI_PROVIDER'))       define('AI_PROVIDER',       getenv('AI_PROVIDER')       ?: 'openai');
+
 define('DB_HOST', 'localhost');
 define('DB_USER', 'zapdash');
 define('DB_PASS', 'Zap@Dashboard2026!');
