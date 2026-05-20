@@ -231,6 +231,41 @@ function wc_google_access_token(string $saPath): ?string {
     return $resp['access_token'] ?? null;
 }
 
+// OAuth2-Token via Refresh-Token (Uploads als echter Nutzer, kein SA-Speicherlimit)
+function wc_google_access_token_oauth(string $oauthPath): ?string {
+    $data = json_decode(file_get_contents($oauthPath), true);
+    if (empty($data['refresh_token'])) return null;
+
+    // Noch gültiges Access-Token?
+    if (!empty($data['access_token']) && ($data['expires_at'] ?? 0) > time() + 60) {
+        return $data['access_token'];
+    }
+
+    // Refresh
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_POSTFIELDS     => http_build_query([
+            'client_id'     => $data['client_id']     ?? '',
+            'client_secret' => $data['client_secret'] ?? '',
+            'refresh_token' => $data['refresh_token'],
+            'grant_type'    => 'refresh_token',
+        ]),
+    ]);
+    $resp = json_decode(curl_exec($ch), true);
+    curl_close($ch);
+
+    if (empty($resp['access_token'])) return null;
+
+    $data['access_token'] = $resp['access_token'];
+    $data['expires_at']   = time() + (int) ($resp['expires_in'] ?? 3600);
+    file_put_contents($oauthPath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    return $resp['access_token'];
+}
+
 function wc_md_inline(string $text): string {
     $text = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8', false);
     $text = preg_replace('/\*\*\*(.+?)\*\*\*/u', '<strong><em>$1</em></strong>', $text);
@@ -617,14 +652,24 @@ PROMPT;
     // 12. Dashboard: publishing (85 %) – Google Doc hochladen
     wc_dashboard_update($dashboardApiUrl, $threadId, 'publishing', 'Dokument wird erstellt', 85, $wfId, $executionId);
 
-    $documentUrl = '';
-    $saPath      = __DIR__ . '/service_account.json';
+    $documentUrl   = '';
     $driveFolderId = '1y2YCAzvSV0WpWU-DTEueG3Au_9SiobIu';
-    if (is_file($saPath) && $generatedContent !== '') {
-        $gToken = wc_google_access_token($saPath);
+    $oauthPath     = __DIR__ . '/google_oauth.json';
+    $saPath        = __DIR__ . '/service_account.json';
+
+    if ($generatedContent !== '') {
+        // OAuth2 bevorzugen (Upload als echter Nutzer, kein SA-Speicherlimit)
+        $gToken = null;
+        if (is_file($oauthPath)) {
+            $gToken = wc_google_access_token_oauth($oauthPath);
+        }
+        // Fallback: Service Account (nur wenn OAuth nicht konfiguriert)
+        if (!$gToken && is_file($saPath)) {
+            $gToken = wc_google_access_token($saPath);
+        }
         if ($gToken) {
-            $htmlContent  = wc_markdown_to_html($generatedContent);
-            $documentUrl  = wc_create_google_doc($gToken, $fileName, $htmlContent, $driveFolderId) ?? '';
+            $htmlContent = wc_markdown_to_html($generatedContent);
+            $documentUrl = wc_create_google_doc($gToken, $fileName, $htmlContent, $driveFolderId) ?? '';
         }
     }
 
